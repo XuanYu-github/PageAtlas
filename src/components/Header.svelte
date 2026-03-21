@@ -13,7 +13,7 @@
       <Logo />
       <h1 class="text-3xl tracking-widest font-semibold">PageAtlas</h1>
     </div>
-    <p class="text-xs text-gray-700 mt-1 pl-1">PDF ToC, Q&A, OCR, and knowledge mapping powered by AI</p>
+    <p class="text-xs text-gray-700 mt-1 pl-1">PDF ToC, Q&A, and knowledge mapping powered by AI</p>
   </div>
 
   <div class="flex items-center gap-2 pt-2">

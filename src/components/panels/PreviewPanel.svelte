@@ -99,6 +99,8 @@
         />
 
         <input
+          id="pdf-upload-input"
+          name="pdf-upload"
           type="file"
           class="hidden"
           accept=".pdf"
