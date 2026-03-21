@@ -5,7 +5,7 @@ import type {PDFDocument, PDFRef} from 'pdf-lib';
 // Use pre-bundled pdf-lib to avoid circular dependency warning. pdf-lib as an
 // external dependency will make failure in the standalone binary.
 // @see https://github.com/marp-team/marp-cli/issues/373
-import {PDFHexString, PDFName, PDFString} from 'pdf-lib';
+import {PDFHexString, PDFName} from 'pdf-lib';
 
 // --- Outline ---
 

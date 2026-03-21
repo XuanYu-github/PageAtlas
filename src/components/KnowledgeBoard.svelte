@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import {tick} from 'svelte';
   import {t} from 'svelte-i18n';
   import rough from 'roughjs';
@@ -15,15 +15,31 @@
     Download,
   } from 'lucide-svelte';
   import {CARD_W, CARD_H, getRandomPaperColor, computeHierarchicalLayout, getClosestPoints} from '$lib/utils/graph';
-  export let items = [];
-  export let apiConfig = {apiKey: ''};
+
+  import type {TocItem} from '$lib/pdf/service';
+  import type {GraphEdgeData, KnowledgeGraphNode} from '$lib/utils/graph';
+
+  type ApiConfig = {
+    apiKey: string;
+    provider?: string;
+    doubaoEndpointIdText?: string;
+    openaiBaseUrl?: string;
+    openaiModelText?: string;
+  };
+  type GraphData = {nodes: KnowledgeGraphNode[]; edges: GraphEdgeData[]};
+  type GenerateBoardResponse = GraphData;
+  type RoughSvgRenderer = ReturnType<typeof rough.svg>;
+  type SvgParent = SVGSVGElement | SVGGElement;
+
+  export let items: TocItem[] = [];
+  export let apiConfig: ApiConfig = {apiKey: ''};
 
   export let title = 'Untitled Book';
 
-  export let onJumpToPage = (pageNumber) => {};
-  export let onHide = () => {};
+  export let onJumpToPage: (pageNumber: number) => void = () => {};
+  export let onHide: () => void = () => {};
 
-  let graphData = {nodes: [], edges: []};
+  let graphData: GraphData = {nodes: [], edges: []};
 
   $: {
     if (items) {
@@ -31,20 +47,20 @@
       tick().then(drawWall);
     }
   }
+
   let isLoading = false;
   let isFullscreen = false;
-  let activeNodeId = null;
+  let activeNodeId: string | null = null;
 
-  let svg;
-  let rc;
+  let svg: SVGSVGElement | null = null;
+  let rc: RoughSvgRenderer | null = null;
   let viewportWidth = 0;
-  let viewportElement;
-  let contentWrapper;
+  let viewportElement: HTMLDivElement | null = null;
+  let contentWrapper: HTMLDivElement | null = null;
 
   let canvasWidth = 400;
   let canvasHeight = 400;
 
-  // Zoom and Pan state
   let scale = 1;
   let viewX = 0;
   let viewY = 0;
@@ -54,7 +70,7 @@
   const MIN_SCALE = 0.1;
   const MAX_SCALE = 5;
 
-  let dragTarget = null;
+  let dragTarget: KnowledgeGraphNode | null = null;
   let initialMouse = {x: 0, y: 0};
   let initialNodePos = {x: 0, y: 0};
   let isDragging = false;
@@ -78,26 +94,27 @@
     }));
 
     try {
-      const response = await fetch('/api/generate-board', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          tocItems: simplifiedItems,
+      const {generateKnowledgeBoardInBrowser} = await import('$lib/client/ai');
+
+      const data = await generateKnowledgeBoardInBrowser({
+        tocItems: simplifiedItems,
+        config: {
           apiKey: apiConfig.apiKey,
-        }),
-      });
+          provider: apiConfig.provider,
+          doubaoEndpointIdText: apiConfig.doubaoEndpointIdText,
+          openaiBaseUrl: apiConfig.openaiBaseUrl,
+          openaiModelText: apiConfig.openaiModelText,
+        },
+      }) as GenerateBoardResponse;
 
-      if (!response.ok) throw new Error('API Failed');
-      const data = await response.json();
-
-      let nodes = data.nodes.map((n) => ({
-        ...n,
-        bgColor: n.isInferred ? '#f8fafc' : getRandomPaperColor(),
+      let nodes: KnowledgeGraphNode[] = data.nodes.map((node) => ({
+        ...node,
+        bgColor: node.isInferred ? '#f8fafc' : getRandomPaperColor(),
         x: 0,
         y: 0,
-        page: n.page || null,
+        page: node.page || null,
       }));
-      let edges = data.edges || [];
+      const edges: GraphEdgeData[] = data.edges || [];
 
       nodes = computeHierarchicalLayout(nodes, edges, canvasWidth);
       graphData = {nodes, edges};
@@ -106,8 +123,8 @@
       centerContent();
       updateCanvasSize();
       drawWall();
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       alert($t('knowledge_board.error_failed'));
     } finally {
       isLoading = false;
@@ -115,38 +132,38 @@
   }
 
   function updateCanvasSize() {
-    if (graphData.nodes.length > 0) {
-      const minX = Math.min(...graphData.nodes.map((n) => n.x));
-      let maxX = Math.max(...graphData.nodes.map((n) => n.x));
-      const minY = Math.min(...graphData.nodes.map((n) => n.y));
-      let maxY = Math.max(...graphData.nodes.map((n) => n.y));
+    if (graphData.nodes.length === 0) return;
 
-      let shifted = false;
+    const minX = Math.min(...graphData.nodes.map((node) => node.x));
+    let maxX = Math.max(...graphData.nodes.map((node) => node.x));
+    const minY = Math.min(...graphData.nodes.map((node) => node.y));
+    let maxY = Math.max(...graphData.nodes.map((node) => node.y));
 
-      if (minX < 50) {
-        const offsetX = 50 - minX;
-        graphData.nodes.forEach((n) => (n.x += offsetX));
-        viewX -= offsetX * scale;
-        shifted = true;
-      }
+    let shifted = false;
 
-      if (minY < 50) {
-        const offsetY = 50 - minY;
-        graphData.nodes.forEach((n) => (n.y += offsetY));
-        viewY -= offsetY * scale;
-        shifted = true;
-      }
-
-      if (shifted) {
-        maxX = Math.max(...graphData.nodes.map((n) => n.x));
-        maxY = Math.max(...graphData.nodes.map((n) => n.y));
-        graphData.nodes = graphData.nodes;
-        requestAnimationFrame(drawWall);
-      }
-
-      canvasWidth = Math.max(maxX + CARD_W + 200, isFullscreen ? window.innerWidth : 400);
-      canvasHeight = Math.max(maxY + CARD_H + 200, isFullscreen ? window.innerHeight : 400);
+    if (minX < 50) {
+      const offsetX = 50 - minX;
+      graphData.nodes.forEach((node) => (node.x += offsetX));
+      viewX -= offsetX * scale;
+      shifted = true;
     }
+
+    if (minY < 50) {
+      const offsetY = 50 - minY;
+      graphData.nodes.forEach((node) => (node.y += offsetY));
+      viewY -= offsetY * scale;
+      shifted = true;
+    }
+
+    if (shifted) {
+      maxX = Math.max(...graphData.nodes.map((node) => node.x));
+      maxY = Math.max(...graphData.nodes.map((node) => node.y));
+      graphData.nodes = graphData.nodes;
+      requestAnimationFrame(drawWall);
+    }
+
+    canvasWidth = Math.max(maxX + CARD_W + 200, isFullscreen ? window.innerWidth : 400);
+    canvasHeight = Math.max(maxY + CARD_H + 200, isFullscreen ? window.innerHeight : 400);
   }
 
   function toggleFullscreen() {
@@ -158,51 +175,53 @@
     });
   }
 
-  function handleContainerMouseDown(e) {
-    // Check if middle click or left click on background
-    // We check if the target is the viewport, the static background, or the transformed wrapper itself (if empty areas clicked)
+  function handleContainerMouseDown(event: MouseEvent) {
+    const target = event.target instanceof Element ? event.target : null;
     const isBackground =
-      e.target === e.currentTarget || e.target.classList.contains('bg-grid-pattern') || e.target === contentWrapper;
+      event.target === event.currentTarget ||
+      target?.classList.contains('bg-grid-pattern') ||
+      event.target === contentWrapper;
 
-    if (e.button === 1 || (e.button === 0 && isBackground)) {
+    if (event.button === 1 || (event.button === 0 && isBackground)) {
       isPanning = true;
-      startPanMouse = {x: e.clientX, y: e.clientY};
+      startPanMouse = {x: event.clientX, y: event.clientY};
       startPanView = {x: viewX, y: viewY};
       activeNodeId = null;
       drawWall();
     }
   }
 
-  function handleWheel(e) {
-    e.preventDefault();
+  function handleWheel(event: WheelEvent) {
+    event.preventDefault();
 
-    // Browser standard: Pinch-to-zoom on trackpads usually fires wheel events with ctrlKey=true
-    if (e.ctrlKey) {
-      // ZOOM Code
+    if (event.ctrlKey) {
+      if (!viewportElement) return;
+
       const rect = viewportElement.getBoundingClientRect();
-      const xs = (e.clientX - rect.left - viewX) / scale;
-      const ys = (e.clientY - rect.top - viewY) / scale;
+      const xs = (event.clientX - rect.left - viewX) / scale;
+      const ys = (event.clientY - rect.top - viewY) / scale;
 
-      const delta = -e.deltaY;
-      const factor = delta > 0 ? 1.05 : 0.95; // Slower zoom for pinch control
+      const delta = -event.deltaY;
+      const factor = delta > 0 ? 1.05 : 0.95;
       let newScale = scale * factor;
 
       if (newScale < MIN_SCALE) newScale = MIN_SCALE;
       if (newScale > MAX_SCALE) newScale = MAX_SCALE;
 
-      viewX = e.clientX - rect.left - xs * newScale;
-      viewY = e.clientY - rect.top - ys * newScale;
+      viewX = event.clientX - rect.left - xs * newScale;
+      viewY = event.clientY - rect.top - ys * newScale;
       scale = newScale;
     } else {
-      // PAN Code (Trackpad two-finger scroll or regular mouse wheel)
-      viewX -= e.deltaX;
-      viewY -= e.deltaY;
+      viewX -= event.deltaX;
+      viewY -= event.deltaY;
     }
   }
 
-  function handleNodeMouseDown(e, node) {
-    e.stopPropagation(); // prevent panning
-    if (e.target.closest('button')) return;
+  function handleNodeMouseDown(event: MouseEvent, node: KnowledgeGraphNode) {
+    event.stopPropagation();
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button')) return;
 
     activeNodeId = node.id;
     drawWall();
@@ -210,14 +229,14 @@
     isDragging = true;
     dragTarget = node;
     hasMovedDuringDrag = false;
-    initialMouse = {x: e.clientX, y: e.clientY};
+    initialMouse = {x: event.clientX, y: event.clientY};
     initialNodePos = {x: node.x, y: node.y};
   }
 
-  function handleWindowMouseMove(e) {
+  function handleWindowMouseMove(event: MouseEvent) {
     if (isPanning) {
-      const dx = e.clientX - startPanMouse.x;
-      const dy = e.clientY - startPanMouse.y;
+      const dx = event.clientX - startPanMouse.x;
+      const dy = event.clientY - startPanMouse.y;
       viewX = startPanView.x + dx;
       viewY = startPanView.y + dy;
       return;
@@ -225,9 +244,8 @@
 
     if (!isDragging || !dragTarget) return;
 
-    // Adjust dx/dy by scale to ensure 1:1 movement relative to mouse pointer *visually*
-    const dx = (e.clientX - initialMouse.x) / scale;
-    const dy = (e.clientY - initialMouse.y) / scale;
+    const dx = (event.clientX - initialMouse.x) / scale;
+    const dy = (event.clientY - initialMouse.y) / scale;
 
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
       hasMovedDuringDrag = true;
@@ -250,11 +268,9 @@
     }
   }
 
-  function handleNodeClick(node) {
-    if (!hasMovedDuringDrag) {
-      if (node.page && onJumpToPage) {
-        onJumpToPage(node.page);
-      }
+  function handleNodeClick(node: KnowledgeGraphNode) {
+    if (!hasMovedDuringDrag && node.page && onJumpToPage) {
+      onJumpToPage(node.page);
     }
   }
 
@@ -262,7 +278,9 @@
     if (!svg) return;
     svg.innerHTML = '';
     if (!graphData.nodes.length) return;
-    rc = rough.svg(svg);
+
+    const renderer = rough.svg(svg);
+    rc = renderer;
 
     const inactiveGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const activeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -274,42 +292,47 @@
     svg.appendChild(nodeGroup);
     svg.appendChild(pinGroup);
 
-    const pinsToDraw = new Set();
-    const nodesWithPins = new Set();
+    const pinsToDraw = new Set<string>();
+    const nodesWithPins = new Set<string>();
+    const edgesToDraw: Array<{
+      edge: GraphEdgeData;
+      src: KnowledgeGraphNode;
+      tgt: KnowledgeGraphNode;
+      idx: number;
+      isActive: boolean;
+    }> = [];
 
-    const edgesToDraw = graphData.edges
-      .map((edge, idx) => {
-        const src = graphData.nodes.find((n) => n.id === edge.source);
-        const tgt = graphData.nodes.find((n) => n.id === edge.target);
-        if (!src || !tgt) return null;
+    graphData.edges.forEach((edge, idx) => {
+      const src = graphData.nodes.find((node) => node.id === edge.source);
+      const tgt = graphData.nodes.find((node) => node.id === edge.target);
+      if (!src || !tgt) return;
 
-        const isActive = activeNodeId && (edge.source === activeNodeId || edge.target === activeNodeId);
-        return {edge, src, tgt, idx, isActive};
-      })
-      .filter(Boolean);
+      edgesToDraw.push({
+        edge,
+        src,
+        tgt,
+        idx,
+        isActive: !!activeNodeId && (edge.source === activeNodeId || edge.target === activeNodeId),
+      });
+    });
 
     edgesToDraw.forEach(({edge, src, tgt, idx, isActive}) => {
       const parentGroup = isActive ? activeGroup : inactiveGroup;
       const options = isActive ? LINE_ACTIVE : LINE_DIM;
 
-      // 1. 计算最近的连接点
       const {start, end} = getClosestPoints(src, tgt);
       const x1 = start.x;
       const y1 = start.y;
       const x2 = end.x;
       const y2 = end.y;
 
-      // 2. 注册钉子位置
       pinsToDraw.add(`${x1},${y1}`);
       pinsToDraw.add(`${x2},${y2}`);
       nodesWithPins.add(src.id);
       nodesWithPins.add(tgt.id);
 
-      // 3. 绘制自然下垂的曲线
       const distY = Math.abs(y2 - y1);
       const distX = Math.abs(x2 - x1);
-
-      // 根据距离动态调整下垂幅度和摆动
       const gravity = 10 + distY * 0.15;
       const curveDir = idx % 2 === 0 ? 1 : -1;
       const swing = (10 + distX * 0.05) * curveDir;
@@ -318,7 +341,7 @@
       const midY = (y1 + y2) / 2 + gravity;
 
       parentGroup.appendChild(
-        rc.curve(
+        renderer.curve(
           [
             [x1, y1],
             [midX, midY],
@@ -328,30 +351,28 @@
         ),
       );
 
-      drawArrowHead(parentGroup, midX, midY, x2, y2, isActive ? ACTIVE_COLOR : '#e2e8f0');
+      drawArrowHead(parentGroup, midX, midY, x2, y2, isActive ? ACTIVE_COLOR : '#e2e8f0', renderer);
 
       if (isActive) {
         const labelX = (x1 + x2) / 2 + swing / 2;
         const labelY = midY;
-        drawEdgeLabel(parentGroup, edge.label, labelX, labelY);
+        drawEdgeLabel(parentGroup, edge.label || '', labelX, labelY);
       }
     });
 
-    // 4. 绘制卡片
     graphData.nodes.forEach((node) => {
       const fillStyle = node.isInferred ? 'zigzag' : 'solid';
       const strokeStyle = node.isInferred ? '#94a3b8' : '#2d3436';
 
-      // 如果当前节点没有连线，我们给它补一个默认顶部的钉子，防止它没钉子
       if (!nodesWithPins.has(node.id)) {
         pinsToDraw.add(`${node.x + CARD_W / 2},${node.y + 4}`);
       }
 
       nodeGroup.appendChild(
-        rc.rectangle(node.x, node.y, CARD_W, CARD_H, {
+        renderer.rectangle(node.x, node.y, CARD_W, CARD_H, {
           ...ROUGH_OPTS,
           fill: node.bgColor,
-          fillStyle: fillStyle,
+          fillStyle,
           stroke: strokeStyle,
           fillWeight: 1,
           strokeWidth: node.isInferred ? 1 : 1.5,
@@ -359,39 +380,45 @@
       );
     });
 
-    // 5. 统一绘制所有钉子 (去重后)
     pinsToDraw.forEach((coordStr) => {
       const [px, py] = coordStr.split(',').map(Number);
-      drawPin(pinGroup, px, py);
+      drawPin(pinGroup, px, py, renderer);
     });
   }
 
   function centerContent() {
     if (graphData.nodes.length === 0) return;
 
-    const contentMinX = Math.min(...graphData.nodes.map((n) => n.x));
-    const contentMaxX = Math.max(...graphData.nodes.map((n) => n.x)) + CARD_W;
-    const contentMinY = Math.min(...graphData.nodes.map((n) => n.y));
-    const contentMaxY = Math.max(...graphData.nodes.map((n) => n.y)) + CARD_H;
+    const contentMinX = Math.min(...graphData.nodes.map((node) => node.x));
+    const contentMaxX = Math.max(...graphData.nodes.map((node) => node.x)) + CARD_W;
+    const contentMinY = Math.min(...graphData.nodes.map((node) => node.y));
+    const contentMaxY = Math.max(...graphData.nodes.map((node) => node.y)) + CARD_H;
 
     const contentWidth = contentMaxX - contentMinX;
     const contentHeight = contentMaxY - contentMinY;
 
     const containerWidth = isFullscreen ? window.innerWidth : viewportWidth || 400;
-    const containerHeight = isFullscreen ? window.innerHeight : 400; // approximation
+    const containerHeight = isFullscreen ? window.innerHeight : 400;
 
     scale = 1;
     viewX = (containerWidth - contentWidth) / 2 - contentMinX;
     viewY = (containerHeight - contentHeight) / 2 - contentMinY;
 
-    // Ensure we don't start with crazy values if empty
-    if (isNaN(viewX)) viewX = 0;
-    if (isNaN(viewY)) viewY = 0;
+    if (Number.isNaN(viewX)) viewX = 0;
+    if (Number.isNaN(viewY)) viewY = 0;
 
     graphData.nodes = graphData.nodes;
   }
 
-  function drawArrowHead(parent, prevX, prevY, tipX, tipY, color, rcInst = rc) {
+  function drawArrowHead(
+    parent: SvgParent,
+    prevX: number,
+    prevY: number,
+    tipX: number,
+    tipY: number,
+    color: string,
+    rcInst: RoughSvgRenderer
+  ) {
     const angle = Math.atan2(tipY - prevY, tipX - prevX);
     const arrowLen = 14;
     const arrowWid = 0.5;
@@ -417,24 +444,23 @@
     );
   }
 
-  function drawEdgeLabel(parent, text, x, y) {
+  function drawEdgeLabel(parent: SvgParent, text: string, x: number, y: number) {
     if (!text) return;
 
-    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    t.setAttribute('x', x);
-    t.setAttribute('y', y + 5);
-    t.setAttribute('text-anchor', 'middle');
-    t.setAttribute('font-family', 'HuiwenMincho, serif');
-    t.setAttribute('font-size', '14');
-    t.setAttribute('fill', ACTIVE_COLOR);
-    t.setAttribute('font-weight', 'bold');
-    // translate(10px, 10px)
-    t.setAttribute('transform', `translate(-15, -15)`);
-    t.textContent = text;
-    parent.appendChild(t);
+    const textElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    textElement.setAttribute('x', String(x));
+    textElement.setAttribute('y', String(y + 5));
+    textElement.setAttribute('text-anchor', 'middle');
+    textElement.setAttribute('font-family', 'HuiwenMincho, serif');
+    textElement.setAttribute('font-size', '14');
+    textElement.setAttribute('fill', ACTIVE_COLOR);
+    textElement.setAttribute('font-weight', 'bold');
+    textElement.setAttribute('transform', 'translate(-15, -15)');
+    textElement.textContent = text;
+    parent.appendChild(textElement);
   }
 
-  function drawPin(parent, x, y, rcInst = rc) {
+  function drawPin(parent: SvgParent, x: number, y: number, rcInst: RoughSvgRenderer) {
     parent.appendChild(rcInst.circle(x, y, 10, {fill: ACTIVE_COLOR, fillStyle: 'solid', stroke: 'none'}));
   }
 
@@ -442,10 +468,10 @@
     if (graphData.nodes.length === 0) return;
 
     const PADDING = 60;
-    const minX = Math.min(...graphData.nodes.map((n) => n.x));
-    const maxX = Math.max(...graphData.nodes.map((n) => n.x));
-    const minY = Math.min(...graphData.nodes.map((n) => n.y));
-    const maxY = Math.max(...graphData.nodes.map((n) => n.y));
+    const minX = Math.min(...graphData.nodes.map((node) => node.x));
+    const maxX = Math.max(...graphData.nodes.map((node) => node.x));
+    const minY = Math.min(...graphData.nodes.map((node) => node.y));
+    const maxY = Math.max(...graphData.nodes.map((node) => node.y));
 
     const width = maxX - minX + CARD_W + PADDING * 2;
     const height = maxY - minY + CARD_H + PADDING * 2;
@@ -454,25 +480,25 @@
     const svgElem = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svgElem.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     svgElem.setAttribute('viewBox', viewBox);
-    svgElem.setAttribute('width', width);
-    svgElem.setAttribute('height', height);
+    svgElem.setAttribute('width', String(width));
+    svgElem.setAttribute('height', String(height));
 
     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bg.setAttribute('x', minX - PADDING);
-    bg.setAttribute('y', minY - PADDING);
-    bg.setAttribute('width', width);
-    bg.setAttribute('height', height);
+    bg.setAttribute('x', String(minX - PADDING));
+    bg.setAttribute('y', String(minY - PADDING));
+    bg.setAttribute('width', String(width));
+    bg.setAttribute('height', String(height));
     bg.setAttribute('fill', '#fdfbf7');
     svgElem.appendChild(bg);
 
     const rcExport = rough.svg(svgElem);
 
-    const pinsToDraw = new Set();
-    const nodesWithPins = new Set();
+    const pinsToDraw = new Set<string>();
+    const nodesWithPins = new Set<string>();
 
     graphData.edges.forEach((edge, idx) => {
-      const src = graphData.nodes.find((n) => n.id === edge.source);
-      const tgt = graphData.nodes.find((n) => n.id === edge.target);
+      const src = graphData.nodes.find((node) => node.id === edge.source);
+      const tgt = graphData.nodes.find((node) => node.id === edge.target);
       if (!src || !tgt) return;
 
       const {start, end} = getClosestPoints(src, tgt);
@@ -510,7 +536,7 @@
 
       const labelX = (x1 + x2) / 2 + swing / 2;
       const labelY = midY;
-      drawEdgeLabel(svgElem, edge.label, labelX, labelY);
+      drawEdgeLabel(svgElem, edge.label || '', labelX, labelY);
     });
 
     graphData.nodes.forEach((node) => {
@@ -525,18 +551,18 @@
         rcExport.rectangle(node.x, node.y, CARD_W, CARD_H, {
           ...ROUGH_OPTS,
           fill: node.bgColor,
-          fillStyle: fillStyle,
+          fillStyle,
           stroke: strokeStyle,
           fillWeight: 1,
           strokeWidth: node.isInferred ? 1 : 1.5,
         }),
       );
 
-      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('x', node.x);
-      fo.setAttribute('y', node.y);
-      fo.setAttribute('width', CARD_W);
-      fo.setAttribute('height', CARD_H);
+      const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      foreignObject.setAttribute('x', String(node.x));
+      foreignObject.setAttribute('y', String(node.y));
+      foreignObject.setAttribute('width', String(CARD_W));
+      foreignObject.setAttribute('height', String(CARD_H));
 
       const div = document.createElement('div');
       div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
@@ -556,8 +582,8 @@
       div.style.wordBreak = 'break-word';
       div.innerText = node.title || '';
 
-      fo.appendChild(div);
-      svgElem.appendChild(fo);
+      foreignObject.appendChild(div);
+      svgElem.appendChild(foreignObject);
     });
 
     pinsToDraw.forEach((coordStr) => {
@@ -566,17 +592,17 @@
     });
 
     const serializer = new XMLSerializer();
-    let source = serializer.serializeToString(svgElem);
+    const source = serializer.serializeToString(svgElem);
 
     const blob = new Blob([source], {type: 'image/svg+xml;charset=utf-8'});
     const url = URL.createObjectURL(blob);
 
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title}-knowledge-board.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${title}-knowledge-board.svg`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   }
 </script>
@@ -623,11 +649,15 @@
     </div>
   {/if}
 
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
   <div
     bind:clientWidth={viewportWidth}
     bind:this={viewportElement}
     on:mousedown={handleContainerMouseDown}
     on:wheel={handleWheel}
+    role="application"
+    tabindex="0"
+    aria-label={$t('knowledge_board.title')}
     class="flex-1 overflow-hidden relative w-full h-full bg-[#f0f0f0] cursor-grab active:cursor-grabbing no-scrollbar block select-none"
   >
     <div class="absolute inset-0 z-0 bg-grid-pattern pointer-events-none"></div>
@@ -649,7 +679,7 @@
           <GraphNode
             {node}
             {activeNodeId}
-            isDragTarget={dragTarget && dragTarget.id === node.id}
+            isDragTarget={!!dragTarget && dragTarget.id === node.id}
             on:mousedown={(e) => handleNodeMouseDown(e, node)}
             on:click={() => handleNodeClick(node)}
           />

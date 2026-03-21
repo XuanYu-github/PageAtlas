@@ -6,6 +6,8 @@
   export let tocRanges: {start: number; end: number; id: string}[] = [];
   export let activeRangeIndex: number = 0;
   export let totalPages: number;
+  export let title = '';
+  export let addRangeTitle = '';
 
   const dispatch = createEventDispatcher();
 
@@ -28,11 +30,11 @@
 
 <div class="border-black border-2 rounded-lg p-3 my-4 bg-blue-100 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
   <div class="flex justify-between items-center mb-2">
-    <h3 class="font-bold">{$t('label.toc_pages_selection')}</h3>
+    <h3 class="font-bold">{title || $t('label.toc_pages_selection')}</h3>
     <button
       on:click={addRange}
       class="p-1 rounded-md hover:bg-black/10 transition-colors"
-      title="Add another range"
+      title={addRangeTitle || $t('label.add_range')}
     >
       <Plus size={18} />
     </button>
@@ -45,7 +47,15 @@
         activeRangeIndex
           ? 'border-blue-500 bg-white/50'
           : 'border-transparent hover:bg-black/[0.03]'}"
+        role="button"
+        tabindex="0"
         on:click={() => setActiveRange(i)}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setActiveRange(i);
+          }
+        }}
       >
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-gray-500 uppercase tracking-wider"

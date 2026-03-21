@@ -7,7 +7,7 @@
   export let show: boolean = false;
 
   const dispatch = createEventDispatcher();
-  const GITHUB_URL = 'https://github.com/anig1scur/tocify';
+  const GITHUB_URL = 'https://github.com/XuanYu-github/PageAtlas';
 
   function close() {
     show = false;
@@ -25,7 +25,7 @@
   }
 
   function handleDontShow() {
-    localStorage.setItem('tocify_hide_star_request', 'true');
+    localStorage.setItem('pageatlas_hide_star_request', 'true');
     close();
   }
 </script>
@@ -34,12 +34,15 @@
   <div
     class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
     transition:fade={{ duration: 200 }}
-    on:click={close}
+    role="button"
+    tabindex="0"
+    aria-label="Close star request dialog"
+    on:click|self={close}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && close()}
   >
     <div
       class="bg-white rounded-xl p-8 max-w-md w-full border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)] relative overflow-hidden"
       transition:fly={{ y: 20, duration: 300 }}
-      on:click|stopPropagation
     >
       <button
         on:click={close}

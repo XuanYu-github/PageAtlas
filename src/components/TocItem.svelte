@@ -1,7 +1,6 @@
 <script lang="ts">
   import {ChevronRight, ChevronDown, Plus, Trash, GripVertical} from 'lucide-svelte';
   import ShortUniqueId from 'short-unique-id';
-  import Self from './TocItem.svelte';
   import {maxPage, tocConfig, dragDisabled} from '../stores';
   import {createEventDispatcher} from 'svelte';
   import {t} from 'svelte-i18n';
@@ -148,12 +147,12 @@
 
   function handleTitleFocus() {
     isFocused = true;
-    const expiryStr = localStorage.getItem('tocify_edit_title_toast_until');
+    const expiryStr = localStorage.getItem('pageatlas_edit_title_toast_until');
     const now = Date.now();
     if (!expiryStr || now > parseInt(expiryStr, 10)) {
        dispatch('showNavHint');
        const newExpiry = now + 30 * 24 * 60 * 60 * 1000;
-       localStorage.setItem('tocify_edit_title_toast_until', newExpiry.toString());
+       localStorage.setItem('pageatlas_edit_title_toast_until', newExpiry.toString());
     }
   }
 </script>
@@ -163,11 +162,13 @@
     <div
       class="flex items-center gap-1 py-1.5 rounded-md group -mr-1"
       on:mouseenter={handleMouseEnter}
+      role="presentation"
       class:bg-blue-200={isActive}
       class:font-bold={isActive}
     >
       <div 
         class="flex items-center gap-1 flex-1 min-w-0 h-full"
+        role="presentation"
         on:mousedown={() => ($dragDisabled = false)}
         on:touchstart={() => ($dragDisabled = false)}
       >
@@ -257,7 +258,7 @@
       >
         {#each item.children || [] as child, i (child.id)}
           <div animate:flip={{duration: flipDurationMs}}>
-            <Self
+            <svelte:self
               prefix={currentNumber}
               index={i + 1}
               item={child}

@@ -3,10 +3,10 @@
 
   export let title: string;
   export let description: string | undefined = undefined;
-  export let url: string = 'https://tocify.aeriszhu.com';
-  export let image: string = 'https://tocify.aeriszhu.com/og-image.png';
+  export let url: string = 'https://xuanyu-github.github.io/PageAtlas/';
+  export let image: string = 'https://xuanyu-github.github.io/PageAtlas/og-image.png';
 
-  const siteName = 'Tocify';
+  const siteName = 'PageAtlas';
 
   $: jsonLd = {
     "@context": "https://schema.org",
@@ -37,7 +37,7 @@
         "description": description || $t('meta.description'),
         "publisher": {
           "@type": "Organization",
-          "name": "Aeris Zhu"
+          "name": "PageAtlas Contributors"
         }
       }
     ]

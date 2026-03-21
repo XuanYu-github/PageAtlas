@@ -6,10 +6,23 @@
   import TocItem from './TocItem.svelte';
   import Tooltip from './Tooltip.svelte';
   import {tocItems, maxPage, autoSaveEnabled, dragDisabled, curFileFingerprint} from '../stores';
+  import type {TocItem as TocEntry} from '$lib/pdf/service';
 
   import {dndzone} from 'svelte-dnd-action';
   import {flip} from 'svelte/animate';
   import {fly} from 'svelte/transition';
+
+  type ApiConfig = {
+    provider: string;
+    apiKey: string;
+    doubaoEndpointIdText?: string;
+    doubaoEndpointIdVision?: string;
+    openaiBaseUrl?: string;
+    openaiModelText?: string;
+    openaiModelVision?: string;
+  };
+  type FlatTocItem = {title: string; page: number; level: number};
+  type TocStackEntry = {node: TocEntry; level: number};
 
   export let currentPage = 1;
   export let isPreview = false;
@@ -17,7 +30,7 @@
   export let insertAtPage = 2;
   export let tocPageCount = 0;
 
-  export let apiConfig = {provider: '', apiKey: ''};
+  export let apiConfig: ApiConfig = {provider: '', apiKey: ''};
   const dispatch = createEventDispatcher();
 
   let flipDurationMs = 200;
@@ -25,15 +38,16 @@
   let text = ``;
   let isUpdatingFromEditor = false;
   let isProcessing = false;
-  let debounceTimer;
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Undo/Redo State
-  let historyStack = [];
-  let futureStack = [];
+  let historyStack: TocEntry[][] = [];
+  let futureStack: TocEntry[][] = [];
   const maxHistory = 20;
+  let firstItemWithChildrenId: string | null = null;
 
   export function saveHistory() {
-    const clone = JSON.parse(JSON.stringify($tocItems));
+    const clone = structuredClone($tocItems);
     historyStack.push(clone);
     if (historyStack.length > maxHistory) {
       historyStack.shift();
@@ -44,9 +58,10 @@
 
   function undo() {
     if (historyStack.length === 0) return;
-    const current = JSON.parse(JSON.stringify($tocItems));
+    const current = structuredClone($tocItems);
     futureStack.push(current);
     const prev = historyStack.pop();
+    if (!prev) return;
     $tocItems = prev;
     historyStack = historyStack;
     futureStack = futureStack;
@@ -54,17 +69,21 @@
 
   function redo() {
     if (futureStack.length === 0) return;
-    const current = JSON.parse(JSON.stringify($tocItems));
+    const current = structuredClone($tocItems);
     historyStack.push(current);
     const next = futureStack.pop();
+    if (!next) return;
     $tocItems = next;
     historyStack = historyStack;
     futureStack = futureStack;
   }
 
-  function handleKeydown(e) {
-    const tagName = e.target.tagName;
-    if (tagName === 'INPUT' || tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+  function handleKeydown(e: KeyboardEvent) {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const tagName = target.tagName;
+    if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) return;
 
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
       if (e.shiftKey) {
@@ -81,7 +100,7 @@
   }
 
   let isDragging = false;
-  let textGenTimer;
+  let textGenTimer: ReturnType<typeof setTimeout> | undefined;
 
   let showNavHint = false;
   let navHintTimer: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -118,16 +137,16 @@
     futureStack = [];
   }
 
-  function buildTree(items) {
-    const root = [];
-    const stack = [];
+  function buildTree(items: FlatTocItem[]): TocEntry[] {
+    const root: TocEntry[] = [];
+    const stack: TocStackEntry[] = [];
     const uid = new ShortUniqueId({length: 10});
 
-    items.forEach((item) => {
-      const newItem = {
+    items.forEach((item: FlatTocItem) => {
+      const newItem: TocEntry = {
         id: uid.randomUUID(),
         title: item.title,
-        to: parseInt(item.page as any) || 1,
+        to: Number(item.page) || 1,
         children: [],
         open: true,
       };
@@ -143,11 +162,11 @@
       if (stack.length === 0) {
         root.push(newItem);
       } else {
-        const parent = stack[stack.length - 1].node;
-        parent.children = parent.children || [];
+        const parent = stack[stack.length - 1]?.node;
+        if (!parent) return;
         parent.children.push(newItem);
       }
-      stack.push({node: newItem, level: level});
+      stack.push({node: newItem, level});
     });
     return root;
   }
@@ -163,23 +182,26 @@
     }
 
     isProcessing = true;
-    const response = await fetch('/api/process-toc', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        text: text,
-        apiKey: apiConfig.apiKey,
-        provider: apiConfig.provider,
-      }),
-    });
+    let aiResult: FlatTocItem[] = [];
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || 'AI processing failed');
+    try {
+      const {processTocInBrowser} = await import('$lib/client/ai');
+
+      aiResult = await processTocInBrowser({
+        text,
+        config: {
+          apiKey: apiConfig.apiKey,
+          provider: apiConfig.provider,
+          doubaoEndpointIdText: apiConfig.doubaoEndpointIdText,
+          doubaoEndpointIdVision: apiConfig.doubaoEndpointIdVision,
+          openaiBaseUrl: apiConfig.openaiBaseUrl,
+          openaiModelText: apiConfig.openaiModelText,
+          openaiModelVision: apiConfig.openaiModelVision,
+        },
+      }) as FlatTocItem[];
+    } finally {
+      isProcessing = false;
     }
-
-    const aiResult = await response.json();
-    isProcessing = false;
 
     if (Array.isArray(aiResult) && aiResult.length > 0) {
       const nestedItems = buildTree(aiResult);
@@ -191,23 +213,23 @@
     }
   }
 
-  function parseText(text) {
+  function parseText(text: string): TocEntry[] {
     const lines = text
       .split('\n')
-      .map((line) => line.trim())
+      .map((line: string) => line.trim())
       .filter(Boolean);
-    const items = [];
-    const stack = [{level: 0, item: {children: items}}];
+    const items: TocEntry[] = [];
+    const stack: Array<{level: number; item: {children: TocEntry[]}}> = [{level: 0, item: {children: items}}];
     const uid = new ShortUniqueId({length: 10});
 
-    lines.forEach((line) => {
+    lines.forEach((line: string) => {
       const match = line.match(/^(\d+(?:\.\d+)*)\s+(.*?)\s+(-?\d+)$/);
       if (match) {
         const [, number, title, pageStr] = match;
         const level = number.split('.').length;
         const page = parseInt(pageStr);
 
-        const newItem = {
+        const newItem: TocEntry = {
           id: uid.randomUUID(),
           title,
           to: page,
@@ -225,9 +247,9 @@
     return items;
   }
 
-  function generateText(items, prefix = '') {
+  function generateText(items: TocEntry[], prefix = ''): string {
     return items
-      .map((item, index) => {
+      .map((item: TocEntry, index: number) => {
         const number = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
         let txt = `${number} ${item.title} ${item.to}`;
         if (item.children?.length) txt += '\n' + generateText(item.children, number);
@@ -236,9 +258,10 @@
       .join('\n');
   }
 
-  function handleInput(e) {
+  function handleInput(e: Event) {
+    const target = e.currentTarget as HTMLTextAreaElement;
     isUpdatingFromEditor = true;
-    text = e.target.value;
+    text = target.value;
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
@@ -273,18 +296,22 @@
     $dragDisabled = true;
   }
 
-  function handleDndConsider(e) {
+  function handleChildJumpToPage(e: CustomEvent<{to: number}>) {
+    dispatch('jumpToPage', e.detail);
+  }
+
+  function handleDndConsider(e: CustomEvent<{items: TocEntry[]}>) {
     handleDragStart();
     $tocItems = e.detail.items;
   }
 
-  function handleDndFinalize(e) {
+  function handleDndFinalize(e: CustomEvent<{items: TocEntry[]}>) {
     $tocItems = e.detail.items;
     handleDragEnd();
   }
 
   $: firstItemWithChildrenId = (() => {
-    const findFirst = (items) => {
+    const findFirst = (items: TocEntry[]): string | null => {
       for (const item of items) {
         if (item.children?.length > 0) return item.id;
         if (item.children) {
@@ -297,10 +324,10 @@
     return findFirst($tocItems);
   })();
 
-  const addMultipleTocItems = (count) => {
+  const addMultipleTocItems = (count: number) => {
     saveHistory();
-    const currentItems = $tocItems;
-    let startPage;
+    const currentItems: TocEntry[] = $tocItems;
+    let startPage: number;
 
     if (currentItems.length > 0) {
       startPage = Math.max(...currentItems.map((i) => i.to)) + 1;
@@ -322,7 +349,7 @@
 
   const toggleAll = (open: boolean) => {
     flipDurationMs = 0;
-    const updateRecursive = (items: any[]): any[] =>
+    const updateRecursive = (items: TocEntry[]): TocEntry[] =>
       items.map((item) => ({
         ...item,
         open,
@@ -339,18 +366,18 @@
   const expandAll = () => toggleAll(true);
   const collapseAll = () => toggleAll(false);
 
-  $: hasAnyExpanded = $tocItems.some((item: any) => item.open);
+  $: hasAnyExpanded = $tocItems.some((item) => item.open);
 
   const addTocItem = () => {
     addMultipleTocItems(1);
   };
 
-  const updateTocItem = (item, updates, skipHistory = false) => {
+  const updateTocItem = (item: TocEntry, updates: Partial<TocEntry>, skipHistory = false) => {
     if (!skipHistory) {
       saveHistory();
     }
-    const updateItemRecursive = (items) =>
-      items.map((currentItem) => {
+    const updateItemRecursive = (items: TocEntry[]): TocEntry[] =>
+      items.map((currentItem: TocEntry) => {
         if (currentItem.id === item.id) return {...currentItem, ...updates};
         if (currentItem.children?.length) {
           return {...currentItem, children: updateItemRecursive(currentItem.children)};
@@ -360,10 +387,10 @@
     $tocItems = updateItemRecursive($tocItems);
   };
 
-  const deleteTocItem = (itemToDelete) => {
+  const deleteTocItem = (itemToDelete: TocEntry) => {
     saveHistory();
-    const deleteItemRecursive = (items) =>
-      items.filter((item) => {
+    const deleteItemRecursive = (items: TocEntry[]): TocEntry[] =>
+      items.filter((item: TocEntry) => {
         if (item.id === itemToDelete.id) return false;
         if (item.children?.length) item.children = deleteItemRecursive(item.children);
         return true;
@@ -483,7 +510,6 @@
             <TocItem
               {item}
               {flipDurationMs}
-              showTooltip={item.id === firstItemWithChildrenId}
               onUpdate={updateTocItem}
               onDelete={deleteTocItem}
               onDragStart={handleDragStart}
@@ -495,9 +521,7 @@
               {tocPageCount}
               on:showNavHint={handleShowNavHint}
               on:hoveritem
-              on:jumpToPage={(e) => {
-                dispatch('jumpToPage', e.detail);
-              }}
+              on:jumpToPage={handleChildJumpToPage}
               index={i + 1}
             />
           </div>

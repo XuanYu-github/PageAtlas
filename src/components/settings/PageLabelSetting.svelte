@@ -58,6 +58,10 @@
   </div>
 
   {#each settings.segments || [] as seg, i (i)}
+    {@const startPageId = `page-label-start-${i}`}
+    {@const styleId = `page-label-style-${i}`}
+    {@const prefixId = `page-label-prefix-${i}`}
+    {@const startAtId = `page-label-start-at-${i}`}
     {#if i > 0}
       <div class="border-t-2 border-dotted border-gray-300 mx-auto"></div>
     {/if}
@@ -73,8 +77,9 @@
       </div>
       <div class="flex items-center gap-2">
         <div class="w-20">
-          <label class="text-xs text-gray-500 block mb-1">{$t('settings.start_page')}</label>
+          <label for={startPageId} class="text-xs text-gray-500 block mb-1">{$t('settings.start_page')}</label>
           <input
+            id={startPageId}
             type="number"
             min="1"
             class="w-full h-8 text-sm border-2 border-gray-300 rounded px-2 focus:outline-none focus:bg-gray-50"
@@ -85,8 +90,9 @@
         </div>
 
         <div class="flex-1 min-w-[120px]">
-          <label class="text-xs text-gray-500 block mb-1">{$t('settings.style')}</label>
+          <label for={styleId} class="text-xs text-gray-500 block mb-1">{$t('settings.style')}</label>
           <select
+            id={styleId}
             class="w-full h-8 text-sm border-2 border-gray-300 rounded px-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-black/20"
             value={seg.style}
             on:change={(e) =>
@@ -101,8 +107,9 @@
 
       <div class="flex items-center gap-2 mt-2">
         <div class="flex-1 min-w-[120px]">
-          <label class="text-xs text-gray-500 block mb-1">{$t('settings.prefix')}</label>
+          <label for={prefixId} class="text-xs text-gray-500 block mb-1">{$t('settings.prefix')}</label>
           <input
+            id={prefixId}
             type="text"
             class="w-full h-8 text-sm border-2 border-gray-300 rounded px-2 focus:outline-none focus:bg-gray-50"
             placeholder="e.g. A-"
@@ -112,8 +119,9 @@
         </div>
 
         <div class="w-20">
-          <label class="text-xs text-gray-500 block mb-1">{$t('settings.start_at')}</label>
+          <label for={startAtId} class="text-xs text-gray-500 block mb-1">{$t('settings.start_at')}</label>
           <input
+            id={startAtId}
             type="number"
             min="1"
             class="w-full h-8 text-sm border-2 border-gray-300 rounded px-2 focus:outline-none focus:bg-gray-50"

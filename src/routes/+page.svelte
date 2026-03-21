@@ -1,10 +1,10 @@
 <script lang="ts">
+  import {browser} from '$app/environment';
   import {onMount, onDestroy, tick} from 'svelte';
   import {get} from 'svelte/store';
   import {fade, fly} from 'svelte/transition';
   import {t, isLoading} from 'svelte-i18n';
-  import {injectAnalytics} from '@vercel/analytics/sveltekit';
-  import type * as PdfjsLibTypes from 'pdfjs-dist';
+  import type * as PdfjsLibTypes from 'pdfjs-dist/legacy/build/pdf.mjs';
   import {init, trackEvent} from '@aptabase/web';
 
   import '../lib/i18n';
@@ -13,6 +13,7 @@
   import {renderQueue} from '../lib/pdf/render-queue';
   import {setOutline} from '../lib/pdf/outliner';
   import {debounce} from '$lib';
+  import {buildQaChapterReferences, findCurrentQaChapter} from '$lib/utils/chapter-qa';
   import {buildTree, convertPdfJsOutlineToTocItems, setNestedValue, findActiveTocPath, cleanTocItems} from '$lib/utils';
   import {generateToc} from '$lib/toc-service';
   import {applyCustomPrefix} from '$lib/utils/prefix';
@@ -26,15 +27,21 @@
   import HelpModal from '../components/modals/HelpModal.svelte';
   import StarRequestModal from '../components/modals/StarRequestModal.svelte';
 
-  import DownloadBanner from '../components/DownloadBanner.svelte';
   import SidebarPanel from '../components/panels/SidebarPanel.svelte';
   import PreviewPanel from '../components/panels/PreviewPanel.svelte';
   import SeoJsonLd from '../components/SeoJsonLd.svelte';
 
   import TocRelation from '../components/KnowledgeBoard.svelte';
-  import {ChevronRight, ChevronLeft} from 'lucide-svelte';
+  import {ChevronRight, ChevronLeft, MessageSquare, ListOrdered} from 'lucide-svelte';
 
-  injectAnalytics();
+  import type {
+    ChapterSourceFormat,
+    QaChapterReference,
+    QaMessageMeta,
+    QaPanelMessage,
+    QaScope,
+  } from '$lib/types/pdf-qa';
+  import type {LocalQaPageText} from '$lib/client/pdf-qa';
 
   const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
   const TWO_SECONDS = 2000;
@@ -85,6 +92,7 @@
 
   let tocRanges = [{start: 1, end: 1, id: 'default'}];
   let activeRangeIndex = 0;
+  let activeSidebarMode: 'toc' | 'qa' = 'toc';
   let tocPageCount = 0;
   let addPhysicalTocPage = false;
   let isPreviewMode = false;
@@ -97,14 +105,135 @@
   let lastInsertAtPage = 2;
   let prefetchPageNum = 0;
   let lastConfigJson = '';
+  let currentTocPath: TocItem[] = [];
+  let currentContentPage: number | null = null;
 
   let customApiConfig = {
     provider: '',
     apiKey: '',
     doubaoEndpointIdText: '',
     doubaoEndpointIdVision: '',
+    openaiBaseUrl: '',
+    openaiModelText: '',
+    openaiModelVision: '',
   };
   let tocEditor: any;
+
+  type QaUploadState = 'idle' | 'uploading' | 'processing' | 'ready' | 'error' | 'cancelled';
+
+  let qaLocalPages: LocalQaPageText[] = [];
+  let qaUploadState: QaUploadState = 'idle';
+  let qaUploadError: string | null = null;
+  let qaPageCount = 0;
+  let qaTextPageCount = 0;
+  let qaProcessedPageCount = 0;
+  let qaPageRanges = [{start: 1, end: 1, id: 'default'}];
+  let qaActiveRangeIndex = 0;
+  let qaRangeStart = 1;
+  let qaRangeEnd = 1;
+  let isQaAsking = false;
+  let qaMessages: QaPanelMessage[] = [];
+  let qaRequestVersion = 0;
+  let qaChapterFormat: ChapterSourceFormat = 'markdown';
+  let qaChapters: QaChapterReference[] = [];
+  let qaCurrentChapter: QaChapterReference | null = null;
+
+  function getQaHistoryStorageKey(fingerprint: string): string {
+    return `pageatlas_qa_history_${fingerprint}`;
+  }
+
+  function loadQaHistory(fingerprint: string): QaPanelMessage[] {
+    if (!browser) return [];
+
+    const raw = localStorage.getItem(getQaHistoryStorageKey(fingerprint));
+    if (!raw) return [];
+
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveQaHistory(fingerprint: string, messages: QaPanelMessage[]) {
+    if (!browser) return;
+    localStorage.setItem(getQaHistoryStorageKey(fingerprint), JSON.stringify(messages));
+  }
+
+  function resetPdfQaState() {
+    qaLocalPages = [];
+    qaUploadState = 'idle';
+    qaUploadError = null;
+    qaPageCount = 0;
+    qaTextPageCount = 0;
+    qaProcessedPageCount = 0;
+    qaPageRanges = [{start: 1, end: 1, id: 'default'}];
+    qaActiveRangeIndex = 0;
+    qaRangeStart = 1;
+    qaRangeEnd = 1;
+    isQaAsking = false;
+    qaMessages = [];
+    qaChapterFormat = 'markdown';
+  }
+
+  function getCurrentContentPage(): number | null {
+    if (!pdfState.currentPage || pdfState.totalPages === 0) return null;
+
+    if (!isPreviewMode || !addPhysicalTocPage) {
+      return pdfState.currentPage;
+    }
+
+    const insertAt = config?.insertAtPage || 2;
+
+    if (pdfState.currentPage < insertAt) {
+      return pdfState.currentPage;
+    }
+
+    if (pdfState.currentPage < insertAt + tocPageCount) {
+      return null;
+    }
+
+    return pdfState.currentPage - tocPageCount;
+  }
+
+  function contentPageToViewerPage(page: number): number {
+    if (!isPreviewMode || !addPhysicalTocPage) {
+      return page;
+    }
+
+    const insertAt = config?.insertAtPage || 2;
+    return page >= insertAt ? page + tocPageCount : page;
+  }
+
+  $: currentContentPage = getCurrentContentPage();
+
+  $: if (qaPageCount > 0) {
+    qaPageRanges = qaPageRanges.map((range) => ({
+      ...range,
+      start: Math.max(1, Math.min(range.start, qaPageCount)),
+      end: Math.max(Math.max(1, Math.min(range.start, qaPageCount)), Math.min(range.end, qaPageCount)),
+    }));
+  }
+
+  $: if (qaActiveRangeIndex >= qaPageRanges.length) {
+    qaActiveRangeIndex = Math.max(0, qaPageRanges.length - 1);
+  }
+
+  $: {
+    const activeQaRange = qaPageRanges[qaActiveRangeIndex];
+    if (activeQaRange) {
+      qaRangeStart = activeQaRange.start;
+      qaRangeEnd = activeQaRange.end;
+    }
+  }
+
+  $: qaChapters = buildQaChapterReferences($tocItems, config?.pageOffset || 0, originalPdfInstance?.numPages || 0);
+  $: qaCurrentChapter = findCurrentQaChapter(qaChapters, currentTocPath, currentContentPage);
+
+  $: if (browser && $curFileFingerprint) {
+    saveQaHistory($curFileFingerprint, qaMessages);
+  }
 
   onMount(async () => {
     init('A-US-0422911470', {
@@ -120,13 +249,13 @@
   onMount(() => {
     $pdfService = new PDFService();
 
-    const hideUntil = localStorage.getItem('tocify_hide_graph_entrance_until');
+    const hideUntil = localStorage.getItem('pageatlas_hide_graph_entrance_until');
     if (hideUntil) {
       const expiry = parseInt(hideUntil, 10);
       if (Date.now() < expiry) {
         isGraphEntranceVisible = false;
       } else {
-        localStorage.removeItem('tocify_hide_graph_entrance_until');
+        localStorage.removeItem('pageatlas_hide_graph_entrance_until');
       }
     }
 
@@ -270,7 +399,10 @@
   const loadPdfLibraries = async () => {
     if (pdfjs && PdfLib) return;
     try {
-      const [pdfjsModule, PdfLibModule] = await Promise.all([import('pdfjs-dist'), import('pdf-lib')]);
+      const [pdfjsModule, PdfLibModule] = await Promise.all([
+        import('pdfjs-dist/legacy/build/pdf.mjs'),
+        import('pdf-lib')
+      ]);
       pdfjs = pdfjsModule;
       PdfLib = PdfLibModule;
     } catch (error: any) {
@@ -501,11 +633,15 @@
   const loadPdfFile = async (file: File) => {
     if (!file) return;
 
-    renderQueue.clear();
-
+    const qaVersion = ++qaRequestVersion;
     const fingerprint = `${file.name}_${file.size}`;
     curFileFingerprint.set(fingerprint);
-    localStorage.setItem('tocify_last_fingerprint', fingerprint);
+    localStorage.setItem('pageatlas_last_fingerprint', fingerprint);
+
+    resetPdfQaState();
+    qaMessages = loadQaHistory(fingerprint);
+
+    renderQueue.clear();
 
     isFileLoading = true;
     autoSaveEnabled.set(false);
@@ -542,6 +678,7 @@
 
     pdfState.filename = file.name;
     pdfState.totalPages = 0;
+    let shouldDefaultToQa = false;
 
     try {
       await loadPdfLibraries();
@@ -590,11 +727,11 @@
       activeRangeIndex = 0;
 
       const session = localStorage.getItem(`toc_draft_${fingerprint}`);
-
       if (session) {
         const {items, pageOffset} = JSON.parse(session);
         tocItems.set(cleanTocItems(items));
         updateTocField('pageOffset', pageOffset);
+        shouldDefaultToQa = Array.isArray(items) && items.length > 0;
       } else {
         try {
           const existingOutline = await originalPdfInstance.getOutline();
@@ -603,6 +740,7 @@
             const importedItems = await convertPdfJsOutlineToTocItems(existingOutline, originalPdfInstance);
             tocItems.set(importedItems);
             updateTocField('pageOffset', 0);
+            shouldDefaultToQa = importedItems.length > 0;
 
             toastProps = {show: true, message: $t('toast.raw_toc_imported'), type: 'info'};
           } else {
@@ -628,6 +766,10 @@
           activeRangeIndex = 0;
         }
       }
+
+      activeSidebarMode = shouldDefaultToQa ? 'qa' : 'toc';
+
+      void indexPdfForQa(qaVersion);
     } catch (error: any) {
       console.error('Error loading PDF:', error);
       toastProps = {show: true, message: $t('toast.error_loading_pdf', {values: {msg: error.message}}), type: 'error'};
@@ -636,8 +778,10 @@
       await tick();
       isFileLoading = false;
 
-      const hideHintUntil = localStorage.getItem('tocify_hide_next_step_hint_until');
+      const hideHintUntil = localStorage.getItem('pageatlas_hide_next_step_hint_until');
       if (hideHintUntil && Date.now() < parseInt(hideHintUntil, 10)) {
+        showNextStepHint = false;
+      } else if (shouldDefaultToQa) {
         showNextStepHint = false;
       } else {
         showNextStepHint = true;
@@ -697,7 +841,7 @@
       toastProps = {show: true, message: $t('toast.export_success'), type: 'success'};
 
       setTimeout(() => {
-        const isDismissed = localStorage.getItem('tocify_hide_star_request') === 'true';
+        const isDismissed = localStorage.getItem('pageatlas_hide_star_request') === 'true';
         if (!isDismissed) {
           showStarRequestModal = true;
         }
@@ -725,6 +869,11 @@
         ranges: tocRanges,
         apiKey: customApiConfig.apiKey,
         provider: customApiConfig.provider,
+        doubaoEndpointIdText: customApiConfig.doubaoEndpointIdText,
+        doubaoEndpointIdVision: customApiConfig.doubaoEndpointIdVision,
+        openaiBaseUrl: customApiConfig.openaiBaseUrl,
+        openaiModelText: customApiConfig.openaiModelText,
+        openaiModelVision: customApiConfig.openaiModelVision,
       });
 
       if (!res || res.length === 0) {
@@ -838,7 +987,13 @@
 
   const handleUpdateActiveRange = (e: CustomEvent) => {
     const {start, end} = e.detail;
-    if (activeRangeIndex >= 0 && activeRangeIndex < tocRanges.length) {
+    if (activeSidebarMode === 'qa') {
+      if (qaActiveRangeIndex >= 0 && qaActiveRangeIndex < qaPageRanges.length) {
+        if (start !== undefined) qaPageRanges[qaActiveRangeIndex].start = start;
+        if (end !== undefined) qaPageRanges[qaActiveRangeIndex].end = end;
+        qaPageRanges = [...qaPageRanges];
+      }
+    } else if (activeRangeIndex >= 0 && activeRangeIndex < tocRanges.length) {
       if (start !== undefined) tocRanges[activeRangeIndex].start = start;
       if (end !== undefined) tocRanges[activeRangeIndex].end = end;
       tocRanges = [...tocRanges];
@@ -878,6 +1033,46 @@
     tocRanges = [...tocRanges];
   };
 
+  const handleAddQaRange = () => {
+    const lastRange = qaPageRanges.length > 0 ? qaPageRanges[qaPageRanges.length - 1] : null;
+    let nextStart = lastRange ? lastRange.end + 1 : currentContentPage || 1;
+
+    if (nextStart < 1) nextStart = 1;
+
+    qaPageRanges = [
+      ...qaPageRanges,
+      {
+        start: nextStart,
+        end: nextStart,
+        id: `qa-range-${Date.now()}`,
+      },
+    ];
+    qaActiveRangeIndex = qaPageRanges.length - 1;
+  };
+
+  const handleRemoveQaRange = (e: CustomEvent) => {
+    const {index} = e.detail;
+    qaPageRanges = qaPageRanges.filter((_, i) => i !== index);
+
+    if (qaPageRanges.length === 0) {
+      qaPageRanges = [{start: currentContentPage || 1, end: currentContentPage || 1, id: `qa-range-${Date.now()}`}];
+      qaActiveRangeIndex = 0;
+      return;
+    }
+
+    if (qaActiveRangeIndex >= qaPageRanges.length) {
+      qaActiveRangeIndex = Math.max(0, qaPageRanges.length - 1);
+    }
+  };
+
+  const handleSetQaActiveRange = (e: CustomEvent) => {
+    qaActiveRangeIndex = e.detail.index;
+  };
+
+  const handleQaRangeChange = () => {
+    qaPageRanges = [...qaPageRanges];
+  };
+
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     if ($tocItems.length > 0) {
       e.preventDefault();
@@ -898,6 +1093,158 @@
       targetPage = physicalContentPage;
     }
     debouncedJumpToPage(targetPage);
+  };
+
+  const jumpToContentPage = async (page: number) => {
+    const targetPage = contentPageToViewerPage(page);
+
+    if (targetPage <= 0 || targetPage > pdfState.totalPages) {
+      toastProps = {show: true, message: $t('qa.jump_invalid'), type: 'error'};
+      return;
+    }
+
+    if (!isPreviewMode) {
+      await togglePreviewMode();
+    }
+
+    debouncedJumpToPage(targetPage);
+  };
+
+  const indexPdfForQa = async (version: number) => {
+    if (!originalPdfInstance) return;
+
+    qaUploadState = 'processing';
+    qaUploadError = null;
+    qaProcessedPageCount = 0;
+    qaPageCount = originalPdfInstance.numPages;
+
+    try {
+      const {extractPdfPagesInBrowser} = await import('$lib/client/pdf-qa');
+
+      const pages = await extractPdfPagesInBrowser(originalPdfInstance, {
+        onPageCount: (pageCount) => {
+          qaPageCount = pageCount;
+        },
+        onPageProcessed: (processedPageCount, pageCount) => {
+          if (version !== qaRequestVersion) return;
+          qaProcessedPageCount = processedPageCount;
+          qaPageCount = pageCount;
+        },
+      });
+
+      if (version !== qaRequestVersion) {
+        return;
+      }
+
+      qaLocalPages = pages;
+      qaUploadState = 'ready';
+      qaTextPageCount = pages.filter((page) => page.charCount > 0).length;
+      qaProcessedPageCount = pages.length;
+                } catch (error: any) {
+      if (version !== qaRequestVersion) {
+        return;
+      }
+
+      qaUploadState = 'error';
+      qaUploadError = error.message || $t('qa.upload_failed');
+    }
+  };
+
+  const handlePdfQaAsk = async (event: CustomEvent<{question: string; scope: QaScope}>) => {
+    if (!originalPdfInstance || qaLocalPages.length === 0 || qaUploadState !== 'ready') {
+      toastProps = {show: true, message: $t('qa.not_ready'), type: 'error'};
+      return;
+    }
+
+    const {question, scope} = event.detail;
+    const messageMeta = createQaMessageMeta(scope);
+    const userMessage: QaPanelMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: question,
+      meta: messageMeta,
+    };
+
+    qaMessages = [...qaMessages, userMessage];
+    isQaAsking = true;
+
+    try {
+      const {askLocalPdfQuestion} = await import('$lib/client/pdf-qa');
+
+      const result = await askLocalPdfQuestion({
+        question,
+        scope,
+        pages: qaLocalPages,
+        config: {
+          apiKey: customApiConfig.apiKey,
+          provider: customApiConfig.provider,
+          doubaoEndpointIdText: customApiConfig.doubaoEndpointIdText,
+          doubaoEndpointIdVision: customApiConfig.doubaoEndpointIdVision,
+          openaiBaseUrl: customApiConfig.openaiBaseUrl,
+          openaiModelText: customApiConfig.openaiModelText,
+          openaiModelVision: customApiConfig.openaiModelVision,
+        },
+        getPageImage: (pageNumber) => $pdfService!.getPageAsImage(originalPdfInstance, pageNumber),
+      });
+
+      qaMessages = [
+        ...qaMessages,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: result.answer,
+          citations: result.citations || [],
+          meta: messageMeta,
+        },
+      ];
+    } catch (error: any) {
+      toastProps = {show: true, message: error.message || $t('qa.ask_failed'), type: 'error'};
+      qaMessages = [
+        ...qaMessages,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: error.message || $t('qa.ask_failed'),
+          meta: messageMeta,
+        },
+      ];
+    } finally {
+      isQaAsking = false;
+    }
+  };
+
+  const handleClearQaHistory = () => {
+    qaMessages = [];
+  };
+
+  const createQaMessageMeta = (scope: QaScope): QaMessageMeta => {
+    switch (scope.mode) {
+      case 'current-page':
+        return {
+          mode: 'page',
+          label: $t('qa.meta_current_page', {values: {page: scope.page}}),
+        };
+      case 'page-range':
+        return {
+          mode: 'page',
+          label: $t('qa.meta_page_range', {values: {start: scope.startPage, end: scope.endPage}}),
+        };
+      case 'page-ranges':
+        return {
+          mode: 'page',
+          label: scope.ranges
+            .map((range: {startPage: number; endPage: number}) => range.startPage === range.endPage
+              ? `${range.startPage}`
+              : `${range.startPage}-${range.endPage}`)
+            .join(', '),
+        };
+      case 'chapter':
+        return {
+          mode: 'chapter',
+          label: scope.chapter.path.join(' > '),
+          sourceFormat: scope.sourceFormat,
+        };
+    }
   };
 
   const jumpToTocPage = async () => {
@@ -929,7 +1276,7 @@
   const handleCloseNextStepHint = () => {
     showNextStepHint = false;
     const expiry = Date.now() + THIRTY_DAYS;
-    localStorage.setItem('tocify_hide_next_step_hint_until', expiry.toString());
+    localStorage.setItem('pageatlas_hide_next_step_hint_until', expiry.toString());
   };
 
   const handleViewerMessage = (event: CustomEvent<{message: string; type: 'success' | 'error' | 'info'}>) => {
@@ -966,13 +1313,14 @@
       {#key $curFileFingerprint}
         <TocRelation
           items={$tocItems}
+          apiConfig={customApiConfig}
           onJumpToPage={jumpToPage}
           title={pdfState.filename ? `${pdfState.filename}`.replace('.pdf', '') : 'No file loaded'}
           onHide={() => {
             showGraphDrawer = false;
             isGraphEntranceVisible = false;
             const expiry = Date.now() + THIRTY_DAYS;
-            localStorage.setItem('tocify_hide_graph_entrance_until', expiry.toString());
+            localStorage.setItem('pageatlas_hide_graph_entrance_until', expiry.toString());
           }}
         />
       {/key}
@@ -980,15 +1328,15 @@
   </div>
 
   {#if showGraphDrawer}
-    <div
+    <button
+      type="button"
+      aria-label="Close knowledge graph drawer"
       transition:fade={{duration: 200}}
       class="flex-1 bg-black/20 backdrop-blur-sm cursor-pointer"
       on:click={() => (showGraphDrawer = false)}
-    ></div>
+    ></button>
   {/if}
 </div>
-
-<DownloadBanner />
 
 {#if toastProps.show}
   <Toast
@@ -1009,6 +1357,58 @@
   <div
     class="flex flex-col mt-5 lg:flex-row lg:mt-8 p-2 md:p-4 md:pr-3 gap-4 lg:gap-8 mx-auto w-[95%] md:w-[90%] xl:w-[80%] 3xl:w-[75%] justify-between"
   >
+    <div class="flex lg:hidden gap-2 w-full">
+      <button
+        type="button"
+        class="flex-1 border-2 border-black rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-2 transition-colors"
+        class:bg-black={activeSidebarMode === 'qa'}
+        class:text-white={activeSidebarMode === 'qa'}
+        class:bg-white={activeSidebarMode !== 'qa'}
+        on:click={() => (activeSidebarMode = 'qa')}
+      >
+        <MessageSquare size={16} />
+        {$t('qa.title')}
+      </button>
+      <button
+        type="button"
+        class="flex-1 border-2 border-black rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-2 transition-colors"
+        class:bg-black={activeSidebarMode === 'toc'}
+        class:text-white={activeSidebarMode === 'toc'}
+        class:bg-white={activeSidebarMode !== 'toc'}
+        on:click={() => (activeSidebarMode = 'toc')}
+      >
+        <ListOrdered size={16} />
+        {$t('mode.toc')}
+      </button>
+    </div>
+
+    <div class="hidden lg:flex flex-col gap-2 self-start sticky top-28">
+      <button
+        type="button"
+        class="p-2 min-h-[120px] w-12 border-2 border-black rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-colors flex flex-col items-center justify-between"
+        class:bg-black={activeSidebarMode === 'qa'}
+        class:text-white={activeSidebarMode === 'qa'}
+        class:bg-white={activeSidebarMode !== 'qa'}
+        on:click={() => (activeSidebarMode = 'qa')}
+        title={$t('qa.title')}
+      >
+        <MessageSquare size={18} class="mt-1" />
+        <span class="writing-mode-vertical text-xs font-bold tracking-widest uppercase rotate-180 select-none">QA</span>
+      </button>
+      <button
+        type="button"
+        class="p-2 min-h-[120px] w-12 border-2 border-black rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-colors flex flex-col items-center justify-between"
+        class:bg-black={activeSidebarMode === 'toc'}
+        class:text-white={activeSidebarMode === 'toc'}
+        class:bg-white={activeSidebarMode !== 'toc'}
+        on:click={() => (activeSidebarMode = 'toc')}
+        title={$t('mode.toc')}
+      >
+        <ListOrdered size={18} class="mt-1" />
+        <span class="writing-mode-vertical text-xs font-bold tracking-widest uppercase rotate-180 select-none">TOC</span>
+      </button>
+    </div>
+
     <SidebarPanel
       {pdfState}
       {originalPdfInstance}
@@ -1016,10 +1416,24 @@
       {isAiLoading}
       {aiError}
       {showNextStepHint}
+      activeMode={activeSidebarMode}
       {config}
       {customApiConfig}
       {tocPageCount}
       {isPreviewMode}
+      {qaUploadState}
+      {qaUploadError}
+      {qaPageCount}
+      {qaTextPageCount}
+      {qaProcessedPageCount}
+      qaCurrentPage={currentContentPage}
+      {qaPageRanges}
+      {qaActiveRangeIndex}
+      {isQaAsking}
+      {qaMessages}
+      {qaChapters}
+      {qaCurrentChapter}
+      {qaChapterFormat}
       bind:tocRanges
       bind:activeRangeIndex
       bind:addPhysicalTocPage
@@ -1033,7 +1447,10 @@
       on:jumpToPage={(e) => {
         jumpToPage(e.detail.to);
       }}
+      on:jumpToQaPage={(e) => jumpToContentPage(e.detail.page)}
       on:generateAi={generateTocFromAI}
+      on:askPdf={handlePdfQaAsk}
+      on:clearQaHistory={handleClearQaHistory}
       on:hoveritem={handleTocItemHover}
       on:fileselect={(e) => loadPdfFile(e.detail)}
       on:viewerMessage={handleViewerMessage}
@@ -1043,6 +1460,10 @@
       on:removeRange={handleRemoveRange}
       on:setActiveRange={handleSetActiveRange}
       on:rangeChange={handleRangeChange}
+      on:addQaRange={handleAddQaRange}
+      on:removeQaRange={handleRemoveQaRange}
+      on:setQaActiveRange={handleSetQaActiveRange}
+      on:qaRangeChange={handleQaRangeChange}
       on:updateActiveRange={handleUpdateActiveRange}
       on:aiFormatResponse={handleAiFormatResponse}
       bind:tocEditor
@@ -1055,8 +1476,8 @@
       {tocPdfInstance}
       {isPreviewMode}
       {isPreviewLoading}
-      {tocRanges}
-      {activeRangeIndex}
+      tocRanges={activeSidebarMode === 'toc' ? tocRanges : qaPageRanges}
+      activeRangeIndex={activeSidebarMode === 'toc' ? activeRangeIndex : qaActiveRangeIndex}
       {tocPageCount}
       {addPhysicalTocPage}
       {jumpToTocPage}

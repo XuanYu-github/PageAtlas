@@ -1,4 +1,4 @@
-import type * as PdfjsLibTypes from 'pdfjs-dist';
+import type * as PdfjsLibTypes from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {get} from 'svelte/store';
 import {_} from 'svelte-i18n';
 
@@ -13,6 +13,9 @@ interface AiTocOptions {
   provider?: string;
   doubaoEndpointIdText?: string;
   doubaoEndpointIdVision?: string;
+  openaiBaseUrl?: string;
+  openaiModelText?: string;
+  openaiModelVision?: string;
 }
 
 function t(key: string, values?: Record<string, string | number>): string {
@@ -20,7 +23,19 @@ function t(key: string, values?: Record<string, string | number>): string {
 }
 
 export async function generateToc(
-  { pdfInstance, ranges, startPage, endPage, apiKey, provider, doubaoEndpointIdText, doubaoEndpointIdVision }: AiTocOptions) {
+  {
+    pdfInstance,
+    ranges,
+    startPage,
+    endPage,
+    apiKey,
+    provider,
+    doubaoEndpointIdText,
+    doubaoEndpointIdVision,
+    openaiBaseUrl,
+    openaiModelText,
+    openaiModelVision,
+  }: AiTocOptions) {
 
   // Normalize ranges
   let finalRanges: { start: number; end: number }[] = [];
@@ -68,37 +83,23 @@ export async function generateToc(
     throw new Error(t('error.no_valid_pages'));
   }
 
-  const response = await fetch('/api/process-toc', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
+  try {
+    const {processTocInBrowser} = await import('$lib/client/ai');
+
+    return await processTocInBrowser({
       images: imagesBase64,
-      apiKey: apiKey,
-      provider: provider,
-      doubaoEndpointIdText,
-      doubaoEndpointIdVision,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json();
-    let friendlyMessage = err.message || t('error.ai_failed');
-
-    if (response.status >= 500 && response.status < 600) {
-      const p = provider || 'Unknown Provider';
-      const providerName = p.charAt(0).toUpperCase() + p.slice(1);
-      friendlyMessage = t('error.try_other_model', { provider: providerName, message: friendlyMessage });
-    } else if (friendlyMessage.includes('No valid ToC') ||
-        friendlyMessage.includes('parsing error') ||
-        friendlyMessage.includes('structure')) {
-      friendlyMessage = t('error.not_a_toc');
-    } else if (response.status === 413) {
-      friendlyMessage = t('error.request_too_large');
-    } else if (response.status === 429) {
-      friendlyMessage = t('error.daily_limit_exceeded');
-    }
-    throw new Error(friendlyMessage);
+      config: {
+        apiKey,
+        provider,
+        doubaoEndpointIdText,
+        doubaoEndpointIdVision,
+        openaiBaseUrl,
+        openaiModelText,
+        openaiModelVision,
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : t('error.ai_failed');
+    throw new Error(message);
   }
-
-  return await response.json();
 }

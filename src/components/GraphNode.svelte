@@ -1,13 +1,15 @@
-<script>
+<script lang="ts">
   import {BrainCircuit} from 'lucide-svelte';
   import {t} from 'svelte-i18n';
   import {createEventDispatcher} from 'svelte';
   import {CARD_W, CARD_H} from '$lib/utils/graph';
 
-  export let node;
-  export let activeNodeId;
-  export let isDragTarget;
-  const dispatch = createEventDispatcher();
+  import type {KnowledgeGraphNode} from '$lib/utils/graph';
+
+  export let node: KnowledgeGraphNode;
+  export let activeNodeId: string | null = null;
+  export let isDragTarget = false;
+  const dispatch = createEventDispatcher<{jump: number}>();
 </script>
 
 <div
@@ -21,8 +23,16 @@
         height: {CARD_H}px;
         cursor: grab;
         "
+  role="button"
+  tabindex="0"
   on:mousedown
   on:click
+  on:keydown={(e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      (e.currentTarget as HTMLDivElement).click();
+    }
+  }}
 >
   {#if node.isInferred}
     <div
@@ -36,13 +46,14 @@
     {node.title}
   </div>
 
-  {#if node.page}
+  {#if node.page !== null}
+    {@const page = node.page}
     <button
       class="absolute bottom-2 right-2 text-xs font-mono text-gray-400 bg-white/50 px-1 rounded border border-transparent hover:text-yellow-400 transition-colors"
-      title={$t('knowledge_board.jump_to_page', {values: {page: node.page}})}
-      on:click|stopPropagation={() => dispatch('jump', node.page)}
+      title={$t('knowledge_board.jump_to_page', {values: {page}})}
+      on:click|stopPropagation={() => dispatch('jump', page)}
     >
-      p.{node.page}
+      p.{page}
     </button>
   {/if}
 </div>

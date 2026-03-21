@@ -1,5 +1,5 @@
 import type {TocItem} from '../pdf/service';
-import type * as PdfjsLibTypes from 'pdfjs-dist';
+import type * as PdfjsLibTypes from 'pdfjs-dist/legacy/build/pdf.mjs';
 import ShortUniqueId from 'short-unique-id';
 
 export function findActiveTocPath(

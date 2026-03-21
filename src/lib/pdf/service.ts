@@ -1,7 +1,8 @@
 import { browser } from '$app/environment';
+import { base } from '$app/paths';
 import { PDFDocument } from 'pdf-lib';
 import fontkit from 'pdf-fontkit';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { type TocConfig } from '../../stores';
 import { A4_WIDTH, BASE_FONT_SIZE_L1, BASE_FONT_SIZE_OTHER } from '../constants';
 import { isLegacyBrowser } from '$lib/utils';
@@ -38,7 +39,9 @@ if (typeof Promise.withResolvers === 'undefined') {
 }
 
 if (browser) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = isLegacyBrowser() ? '/pdf.worker.legacy.min.mjs' : '/pdf.worker.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = isLegacyBrowser()
+    ? `${base}/pdf.worker.legacy.min.mjs`
+    : `${base}/pdf.worker.min.mjs`;
 }
 
 export class PDFService {
@@ -50,8 +53,8 @@ export class PDFService {
 
   static FONT_URLS = {
     huiwen: {
-      regular: '/fonts/huiwen-mincho.ttf',
-      bold: '/fonts/huiwen-mincho.ttf',
+      regular: `${base}/fonts/huiwen-mincho.ttf`,
+      bold: `${base}/fonts/huiwen-mincho.ttf`,
     },
     hei: {
       regular: 'https://static.aeriszhu.com/SourceHanSansSC-Regular.woff2',

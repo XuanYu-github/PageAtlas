@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://tocify.aeriszhu.com/sitemap.xml
+Sitemap: https://xuanyu-github.github.io/PageAtlas/sitemap.xml

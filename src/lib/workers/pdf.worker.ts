@@ -10,13 +10,14 @@ if (typeof (globalThis as any).window === 'undefined') {
 }
 
 import { PDFDocument, type PDFFont, PDFName, type PDFPage, rgb, StandardFonts, PDFArray } from 'pdf-lib';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import fontkit from 'pdf-fontkit';
 import { isLegacyBrowser } from '$lib/utils';
 import { TOC_LAYOUT, CJK_REGEX, A4_WIDTH, A4_HEIGHT } from '../constants';
 import { setOutline } from '../pdf/outliner';
 
-const workerFileName = isLegacyBrowser() ? '/pdf.worker.legacy.min.mjs' : '/pdf.worker.min.mjs';
+const workerBase = import.meta.env.BASE_URL || '/';
+const workerFileName = isLegacyBrowser() ? `${workerBase}pdf.worker.legacy.min.mjs` : `${workerBase}pdf.worker.min.mjs`;
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerFileName;
 
 let sourcePdfBytes: ArrayBuffer | null = null;

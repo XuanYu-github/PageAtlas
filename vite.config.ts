@@ -8,10 +8,19 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           if (id.includes('pdfjs-dist')) {
-            return 'pdf-worker';
+            return 'pdf-engine';
           }
-          if (id.includes('pdf-lib')) {
-            return 'pdf-lib';
+          if (id.includes('pdf-lib') || id.includes('pdf-fontkit')) {
+            return 'pdf-edit';
+          }
+          if (id.includes('@google/generative-ai') || id.includes('openai') || id.includes('jsonrepair')) {
+            return 'llm-clients';
+          }
+          if (id.includes('roughjs')) {
+            return 'graph';
+          }
+          if (id.includes('lucide-svelte')) {
+            return 'icons';
           }
           if (id.includes('node_modules')) {
             return 'vendor';

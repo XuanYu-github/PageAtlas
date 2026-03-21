@@ -25,12 +25,15 @@
   <div
     class="fixed inset-0 bg-lime-400 flex items-center justify-center z-50 p-4"
     transition:fade={{duration: 150}}
-    on:click={() => (showOffsetModal = false)}
+    role="button"
+    tabindex="0"
+    aria-label="Close offset dialog"
+    on:click|self={() => (showOffsetModal = false)}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && (showOffsetModal = false)}
   >
     <div
       class="bg-white rounded-lg p-6 w-[95%] md:w-[85%] max-w-5xl max-h-[90vh] overflow-y-auto border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)]"
       transition:fly={{y: 20, duration: 200}}
-      on:click|stopPropagation
     >
       <div class="flex justify-between items-start mb-4">
         <h2 class="text-xl md:text-2xl font-bold">{$t('offset.title')}</h2>
@@ -48,7 +51,7 @@
             {$t('offset.found_prefix')}
             <strong class="text-black text-2xl md:text-3xl block my-2">{firstTocItem?.title}</strong>
             {$t('offset.found_on_prefix')}
-            <div class="my-2" />
+            <div class="my-2"></div>
             <div class="flex items-center gap-4">
               <strong class="text-black text-2xl md:text-3xl">
                 {$t('offset.page_n', {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {base} from '$app/paths';
   import {fade, fly} from 'svelte/transition';
   import {X, Send} from 'lucide-svelte';
 
@@ -22,16 +23,19 @@
   <div
     class="fixed inset-0 bg-lime-400 flex items-center justify-center z-50 p-4"
     transition:fade={{duration: 150}}
-    on:click={() => (showHelpModal = false)}
+    role="button"
+    tabindex="0"
+    aria-label="Close help dialog"
+    on:click|self={() => (showHelpModal = false)}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && (showHelpModal = false)}
   >
     <div
       class="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)]"
       transition:fly={{y: 20, duration: 200}}
-      on:click|stopPropagation
     >
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div class="flex flex-wrap items-center gap-4">
-          <h2 class="text-2xl font-black italic">How to Use Tocify</h2>
+          <h2 class="text-2xl font-black italic">How to Use PageAtlas</h2>
 
           <span class=" font-bold border-l-2 border-black pl-4 ml-1 hidden sm:inline-block">
             Feedback
@@ -74,7 +78,7 @@
 
       <div class="flex flex-col gap-6">
         <video
-          src={'/videos/demo.mp4'}
+          src={`${base}/videos/demo.mp4`}
           controls
           loop
           autoplay

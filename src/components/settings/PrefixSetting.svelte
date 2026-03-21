@@ -68,6 +68,11 @@
       class="space-y-3"
     >
       {#each settings.configs as config, i}
+        {@const styleId = `prefix-style-${i}`}
+        {@const inheritId = `prefix-inherit-${i}`}
+        {@const separatorId = `prefix-separator-${i}`}
+        {@const prefixId = `prefix-value-${i}`}
+        {@const suffixId = `prefix-suffix-${i}`}
         <div
           class="border-2 border-black rounded-md bg-white overflow-hidden transition-all duration-200 shadow-[2px_2px_0px_rgba(0,0,0,0.1)]"
         >
@@ -114,8 +119,9 @@
               <div class="space-y-3 pt-3">
                 <div class="flex gap-2 items-end">
                   <div class="flex-grow">
-                    <label class="text-sm text-gray-500 mb-1 block">{$t('settings.style')}</label>
+                    <label for={styleId} class="text-sm text-gray-500 mb-1 block">{$t('settings.style')}</label>
                     <select
+                      id={styleId}
                       class="w-full h-8 text-xs border-2 border-gray-300 rounded px-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-black/20"
                       bind:value={config.style}
                       on:change={handleChange}
@@ -128,8 +134,9 @@
 
                   {#if i > 0}
                     <div class="flex flex-col items-center">
-                      <label class="text-sm text-gray-500 mb-1 block">{$t('settings.inherit_parent')}</label>
+                      <label for={inheritId} class="text-sm text-gray-500 mb-1 block">{$t('settings.inherit_parent')}</label>
                       <input
+                        id={inheritId}
                         type="checkbox"
                         class="checkbox h-8 w-8 checkbox-xs outline-2 outline-gray-300 rounded-sm checkbox-primary"
                         bind:checked={config.inheritParent}
@@ -142,8 +149,9 @@
                         class="w-16"
                         transition:slide={{axis: 'x', duration: 200}}
                       >
-                        <label class="text-sm text-gray-500 mb-1 block max-h-5">{$t('settings.separator')}</label>
+                        <label for={separatorId} class="text-sm text-gray-500 mb-1 block max-h-5">{$t('settings.separator')}</label>
                         <input
+                          id={separatorId}
                           type="text"
                           class="w-full h-8 text-xs border-2 border-gray-300 rounded text-center focus:outline-none focus:bg-gray-50"
                           bind:value={config.separator}
@@ -156,8 +164,9 @@
 
                 <div class="flex gap-2 items-center">
                   <div class="flex-1">
-                    <label class="text-sm text-gray-500 mb-1 block">{$t('settings.prefix')}</label>
+                    <label for={prefixId} class="text-sm text-gray-500 mb-1 block">{$t('settings.prefix')}</label>
                     <input
+                      id={prefixId}
                       type="text"
                       class="w-full h-8 text-xs border-2 border-gray-300 rounded px-2 focus:outline-none focus:bg-gray-50"
                       placeholder="e.g. Chapter"
@@ -169,8 +178,9 @@
                   <div class="pt-5 text-gray-300">➜</div>
 
                   <div class="flex-1">
-                    <label class="text-sm text-gray-500 mb-1 block">{$t('settings.suffix')}</label>
+                    <label for={suffixId} class="text-sm text-gray-500 mb-1 block">{$t('settings.suffix')}</label>
                     <input
+                      id={suffixId}
                       type="text"
                       class="w-full h-8 text-xs border-2 border-gray-300 rounded px-2 focus:outline-none focus:bg-gray-50"
                       placeholder="e.g. ."

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {base} from '$app/paths';
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
@@ -26,7 +27,7 @@
         in:fly={{ y: 20, duration: 600, delay: 0, easing: cubicOut }} 
         class="mb-16"
       >
-         <a href="/" class="group inline-flex items-center gap-2 px-5 py-2 border-2 border-black bg-white rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] active:scale-95 transition-all font-bold mb-10 text-sm uppercase tracking-wider">
+         <a href={base || '/'} class="group inline-flex items-center gap-2 px-5 py-2 border-2 border-black bg-white rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] active:scale-95 transition-all font-bold mb-10 text-sm uppercase tracking-wider">
            <ArrowLeft size={16} class="group-hover:-translate-x-1 transition-transform"/>
            Back to Tool
          </a>

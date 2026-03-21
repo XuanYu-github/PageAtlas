@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import {fly} from 'svelte/transition';
   import {backOut} from 'svelte/easing';
 
@@ -11,10 +11,10 @@
   export let color = 'bg-gradient-to-tr from-blue-300/70 to-pink-300/60 ';
 
   let isVisible = false;
-  let timer = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let isCopied = false;
 
-  const delay = (func) => {
+  const delay = (func: () => void) => {
     return () => {
       timer = setTimeout(func, 300);
     };
@@ -36,10 +36,10 @@
     setTimeout(() => (isCopied = false), 1500);
   };
 
-  const toUnit = (val) => {
+  const toUnit = (val: string | number) => {
     if (typeof val === 'number') return `${val * 100}%`;
     
-    if (!isNaN(val) && !val.includes('%') && !val.includes('px')) {
+    if (!Number.isNaN(Number(val)) && !val.includes('%') && !val.includes('px')) {
        const num = parseFloat(val);
        if (Math.abs(num) <= 1) {
          return `${num * 100}%`;
@@ -54,7 +54,7 @@
   
   $: customStyle = isCustomPosition  ? `left: ${customCoords[0]}; top: ${customCoords[1]}; margin: 0;` : '';
 
-  const getFlyParams = (pos) => {
+  const getFlyParams = (pos: string): {x?: number; y?: number} => {
     if (isCustomPosition) return { y: 10 };
     switch (pos) {
       case 'top':

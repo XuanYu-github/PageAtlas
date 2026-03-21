@@ -42,12 +42,15 @@
   <div
     class="fixed inset-0 bg-gray-400/90 flex items-center justify-center z-[60] p-4"
     transition:fade={{duration: 150}}
+    role="button"
+    tabindex="0"
+    aria-label="Close update dialog"
     on:click|self={handleClose}
+    on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && handleClose()}
   >
     <div
       class="bg-white rounded-lg p-0 max-w-lg w-full max-h-[85vh] flex flex-col border-4 border-black shadow-[12px_12px_0px_rgba(0,0,0,1)] relative overflow-hidden"
       transition:fly={{y: 20, duration: 200}}
-      on:click|stopPropagation
     >
       <div class="bg-yellow-300 border-b-4 border-black p-5 flex justify-between items-center">
         <div class="flex items-center gap-3">

@@ -3,19 +3,48 @@ export const CARD_H = 120;
 export const GAP_X = 320;
 export const GAP_Y = 280;
 
-export const getRandomPaperColor = () => {
+export interface GraphPoint {
+  x: number;
+  y: number;
+}
+
+export interface GraphEdgeData {
+  source: string;
+  target: string;
+  type?: string;
+  label?: string;
+}
+
+export interface GraphLayoutNode extends GraphPoint {
+  id: string;
+}
+
+export interface KnowledgeGraphNode extends GraphLayoutNode {
+  title: string;
+  isInferred: boolean;
+  page: number | null;
+  cluster?: string;
+  w?: number;
+  h?: number;
+  bgColor?: string;
+}
+
+export const getRandomPaperColor = (): string => {
   const papers = ['#ffffff', '#fdfbf7', '#fcfcfc'];
   return papers[Math.floor(Math.random() * papers.length)];
 };
 
-export function getDistance(p1, p2) {
+export function getDistance(p1: GraphPoint, p2: GraphPoint): number {
   return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 }
 
-export function getClosestPoints(srcNode, tgtNode) {
-  const getAnchors = (node) =>
-      [{x: node.x + CARD_W / 2, y: node.y},           // Top Mid
-       {x: node.x + CARD_W / 2, y: node.y + CARD_H},  // Bottom Mid
+export function getClosestPoints<T extends GraphLayoutNode>(
+  srcNode: T,
+  tgtNode: T
+): {start: GraphPoint; end: GraphPoint} {
+  const getAnchors = (node: T): GraphPoint[] => [
+    {x: node.x + CARD_W / 2, y: node.y},
+    {x: node.x + CARD_W / 2, y: node.y + CARD_H},
   ];
 
   const srcAnchors = getAnchors(srcNode);
@@ -37,77 +66,103 @@ export function getClosestPoints(srcNode, tgtNode) {
   return bestPair;
 }
 
-export function computeHierarchicalLayout(nodes, edges, canvasWidth) {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const adj = new Map();
-  const revAdj = new Map();
-  nodes.forEach((n) => {
-    adj.set(n.id, []);
-    revAdj.set(n.id, []);
+export function computeHierarchicalLayout<T extends GraphLayoutNode>(
+  nodes: T[],
+  edges: GraphEdgeData[],
+  canvasWidth: number
+): T[] {
+  const adj = new Map<string, string[]>();
+
+  nodes.forEach((node) => {
+    adj.set(node.id, []);
   });
-  edges.forEach((e) => {
-    if (adj.has(e.source)) adj.get(e.source).push(e.target);
-    if (revAdj.has(e.target)) revAdj.get(e.target).push(e.source);
+
+  edges.forEach((edge) => {
+    const targets = adj.get(edge.source);
+    if (targets) {
+      targets.push(edge.target);
+    }
   });
-  const asapLevels = new Map();
-  nodes.forEach((n) => asapLevels.set(n.id, 0));
-  for (let i = 0; i < 10; i++) {
+
+  const asapLevels = new Map<string, number>();
+  nodes.forEach((node) => asapLevels.set(node.id, 0));
+
+  for (let index = 0; index < 10; index += 1) {
     let changed = false;
+
     edges.forEach((edge) => {
-      const srcLvl = asapLevels.get(edge.source) || 0;
-      const tgtLvl = asapLevels.get(edge.target) || 0;
-      if (srcLvl >= tgtLvl) {
-        asapLevels.set(edge.target, srcLvl + 1);
+      const srcLevel = asapLevels.get(edge.source) || 0;
+      const tgtLevel = asapLevels.get(edge.target) || 0;
+
+      if (srcLevel >= tgtLevel) {
+        asapLevels.set(edge.target, srcLevel + 1);
         changed = true;
       }
     });
+
     if (!changed) break;
   }
-  const finalLevels = new Map();
-  nodes.forEach((n) => {
-    if ((adj.get(n.id) || []).length === 0) {
-      finalLevels.set(n.id, asapLevels.get(n.id));
+
+  const finalLevels = new Map<string, number>();
+  nodes.forEach((node) => {
+    if ((adj.get(node.id) || []).length === 0) {
+      finalLevels.set(node.id, asapLevels.get(node.id) || 0);
     } else {
-      finalLevels.set(n.id, -1);
+      finalLevels.set(node.id, -1);
     }
   });
-  for (let i = 0; i < 10; i++) {
+
+  for (let index = 0; index < 10; index += 1) {
     let changed = false;
-    nodes.forEach((n) => {
-      const targets = adj.get(n.id);
-      if (targets.length > 0) {
-        let minChildLevel = Infinity;
-        targets.forEach((tId) => {
-          const childLvl = asapLevels.get(tId);
-          if (childLvl < minChildLevel) minChildLevel = childLvl;
-        });
-        const anchorLevel = minChildLevel - 1;
-        const baseLevel = asapLevels.get(n.id);
-        const bestLevel = Math.max(baseLevel, anchorLevel);
-        if (finalLevels.get(n.id) !== bestLevel) {
-          finalLevels.set(n.id, bestLevel);
-          asapLevels.set(n.id, bestLevel);
-          changed = true;
+
+    nodes.forEach((node) => {
+      const targets = adj.get(node.id) || [];
+      if (targets.length === 0) return;
+
+      let minChildLevel = Infinity;
+      targets.forEach((targetId) => {
+        const childLevel = asapLevels.get(targetId);
+        if (typeof childLevel === 'number' && childLevel < minChildLevel) {
+          minChildLevel = childLevel;
         }
+      });
+
+      const anchorLevel = minChildLevel - 1;
+      const baseLevel = asapLevels.get(node.id) || 0;
+      const bestLevel = Math.max(baseLevel, anchorLevel);
+
+      if (finalLevels.get(node.id) !== bestLevel) {
+        finalLevels.set(node.id, bestLevel);
+        asapLevels.set(node.id, bestLevel);
+        changed = true;
       }
     });
+
     if (!changed) break;
   }
-  const levelGroups = [];
-  nodes.forEach((n) => {
-    let lvl = finalLevels.get(n.id);
-    if (lvl === -1 || lvl === undefined) lvl = asapLevels.get(n.id);
-    if (!levelGroups[lvl]) levelGroups[lvl] = [];
-    levelGroups[lvl].push(n);
+
+  const levelGroups: T[][] = [];
+  nodes.forEach((node) => {
+    let level = finalLevels.get(node.id);
+    if (level === -1 || level === undefined) {
+      level = asapLevels.get(node.id) || 0;
+    }
+
+    levelGroups[level] ||= [];
+    levelGroups[level].push(node);
   });
-  const compactGroups = levelGroups.filter((g) => g && g.length > 0);
-  compactGroups.forEach((group, lvlIndex) => {
+
+  const compactGroups = levelGroups.filter((group): group is T[] => Array.isArray(group) && group.length > 0);
+
+  compactGroups.forEach((group, levelIndex) => {
     const rowWidth = group.length * GAP_X;
     const startX = canvasWidth / 2 - rowWidth / 2;
-    group.forEach((node, colIndex) => {
-      node.x = startX + colIndex * GAP_X + (Math.random() - 0.5) * 40;
-      node.y = 100 + lvlIndex * GAP_Y;
+
+    group.forEach((node, columnIndex) => {
+      node.x = startX + columnIndex * GAP_X + (Math.random() - 0.5) * 40;
+      node.y = 100 + levelIndex * GAP_Y;
     });
   });
+
   return nodes;
 }

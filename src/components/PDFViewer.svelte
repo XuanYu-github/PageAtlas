@@ -7,7 +7,7 @@
   import { type PDFService, type PDFState, type TocItem } from '$lib/pdf/service';
   import { renderQueue } from '$lib/pdf/render-queue';
   import { formatPageLabel } from '$lib/pdf/page-labels';
-  import type { RenderTask } from 'pdfjs-dist';
+  import type { RenderTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
   export let pdfState: PDFState;
   export let originalPdfInstance: any = null;
