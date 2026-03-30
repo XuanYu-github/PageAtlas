@@ -1,152 +1,162 @@
 # PageAtlas Lite
 
-Browser-only PDF structure and understanding workspace for GitHub Pages.
+> [English](./README.en.md)
 
-`PageAtlas Lite` is a GPLv3, static SvelteKit app for working with PDFs entirely in the browser:
+纯浏览器 PDF 结构编辑与理解工作区，可部署于 GitHub Pages。
 
-- inspect and edit PDF bookmarks / ToC locally
-- generate ToCs from page images or pasted raw text with BYOK AI
-- ask grounded page-level and chapter-level questions with citations
-- explore a knowledge-board graph generated from the current outline
-- export an updated PDF without sending the file to a custom backend
+`PageAtlas Lite` 是一个 GPLv3 协议的静态 SvelteKit 应用，所有 PDF 操作均在浏览器内完成：
 
-This repository is a substantially modified derivative of Tocify, rebuilt as a static GitHub Pages app with browser-side AI calls and no backend services.
+- 本地查看与编辑 PDF 书签 / 目录（ToC）
+- 通过自带 API Key 的 AI，从页面图像或粘贴的纯文本生成目录
+- 基于页级和章节级引用进行 PDF 问答
+- 从当前目录大纲生成知识图谱
+- 导出更新后的 PDF，无需将文件发送到自定义后端
 
-## Screenshots
+本仓库是在 Tocify 基础上大幅修改的衍生版本，重构为静态 GitHub Pages 应用，AI 调用完全在浏览器端完成，无后端服务。
 
-| Main Workspace | Text ToC Formatting |
+## 截图
+
+| 主工作区 | 文本目录格式化 |
 | --- | --- |
-| ![Main workspace](./screenshots/basic.png) | ![Text formatting](./screenshots/text.gif) |
+| ![主工作区](./screenshots/basic.png) | ![文本格式化](./screenshots/text.gif) |
 
-| Style Editing |
+| 样式编辑 |
 | --- |
-| ![Style editing](./screenshots/style.png) |
+| ![样式编辑](./screenshots/style.png) |
 
-## Why PageAtlas Lite
+## 为什么选择 PageAtlas Lite
 
-Unlike the original server-assisted workflow, this Lite edition is designed for fully static hosting:
+与原始的服务端辅助流程不同，Lite 版本专为完全静态托管设计：
 
-- no custom server
-- no Redis / backend cache
-- no server-side OCR pipeline
-- no API routes required at runtime
-- direct browser-to-model calls using your own key
+- 无需自定义服务器
+- 无需 Redis / 后端缓存
+- 无需服务端 OCR 流水线
+- 运行时无需 API 路由
+- 使用你自己的 API Key 直接从浏览器调用模型
 
-That makes it suitable for GitHub Pages and other static hosts, while still keeping advanced PDF workflows available.
+这让它适用于 GitHub Pages 和其他静态主机，同时保留了完整的 PDF 工作流。
 
-## Feature Overview
+## 功能概览
 
-| Area | What it does |
+| 模块 | 功能 |
 | --- | --- |
-| PDF Preview | Local preview, navigation, scale, and export |
-| ToC Editing | Manual outline editing, drag-and-drop hierarchy, page offsets, labels, prefixes |
-| AI ToC Generation | Parse scanned ToC pages or pasted raw text into structured outline data |
-| PDF Q&A | Ask by current page, selected page ranges, or current chapter |
-| Multimodal Reading | If a page has no extractable text, Lite can still query it through attached page images |
-| Knowledge Board | Build a relationship graph from the current ToC |
-| BYOK Presets | Save, import, export, and reuse OpenAI-compatible provider presets locally |
+| PDF 预览 | 本地预览、导航、缩放、导出 |
+| 目录编辑 | 手动大纲编辑、拖拽层级、页码偏移、标签、前缀 |
+| AI 目录生成 | 将扫描的目录页或粘贴的纯文本解析为结构化大纲 |
+| PDF 问答 | 按当前页、选定页范围或当前章节提问 |
+| 多模态阅读 | 若页面无可提取文本，仍可通过附带的页面图片进行问答 |
+| 知识图谱 | 从当前目录构建关系图谱 |
+| BYOK 预设 | 本地保存、导入、导出、复用 OpenAI 兼容接口的预设 |
 
-## Supported AI Providers
+## 支持的 AI 提供商
 
-All AI features are BYOK and run in the browser.
+所有 AI 功能均为 BYOK（自带密钥），在浏览器中运行。
 
 - Gemini
 - Qwen
 - Zhipu
 - Doubao
-- OpenAI-compatible endpoints
+- OpenAI 兼容接口
 
-Notes:
+说明：
 
-- Your API key is stored in browser storage on your own machine.
-- OpenAI-compatible presets store `name`, `baseURL`, and model names locally.
-- Whether a provider works in GitHub Pages depends on browser-side CORS support from that provider or gateway.
+- API Key 存储在你自己设备的浏览器本地存储中。
+- OpenAI 兼容预设在本地保存 `名称`、`Base URL` 和模型名称。
+- 在 GitHub Pages 中是否可用取决于对应提供商或网关是否支持浏览器端 CORS。
 
-## Lite Architecture
+## Lite 架构
 
-PageAtlas Lite keeps the PDF file on the client side and uses browser-side AI helpers.
+PageAtlas Lite 将 PDF 文件保留在客户端，使用浏览器端的 AI 辅助模块。
 
-- PDF preview and editing: browser local
-- ToC generation: browser -> provider
-- Q&A: browser local extraction + browser -> provider
-- Knowledge board: browser -> provider
-- Exported PDF: generated locally in browser
+- PDF 预览与编辑：浏览器本地
+- 目录生成：浏览器 -> 提供商
+- 问答：浏览器本地提取 + 浏览器 -> 提供商
+- 知识图谱：浏览器 -> 提供商
+- 导出 PDF：浏览器本地生成
 
-There is no runtime dependency on `src/routes/api/**` because those routes have been removed from Lite.
+Lite 版本已移除所有 `src/routes/api/**` 运行时接口。
 
-## Development
+## 开发
 
-Install:
+安装依赖：
 
 ```bash
 pnpm install --frozen-lockfile
 ```
 
-Run dev server:
+启动开发服务器：
 
 ```bash
 pnpm dev
 ```
 
-Type-check:
+类型检查：
 
 ```bash
 pnpm check
 ```
 
-Build static output:
+构建静态输出：
 
 ```bash
 pnpm build
 ```
 
-Preview production build:
+预览生产构建：
 
 ```bash
 pnpm preview
 ```
 
-## GitHub Pages Deployment
+## 桌面版开发
 
-This repo is configured for deployment at:
+桌面版使用 Tauri 2，支持 Windows、macOS 和 Ubuntu。
+
+```bash
+pnpm tauri:dev
+```
+
+## GitHub Pages 部署
+
+本仓库配置部署地址：
 
 `https://xuanyu-github.github.io/PageAtlas/`
 
-The project uses:
+项目使用：
 
 - `@sveltejs/adapter-static`
-- base path `/PageAtlas`
-- workflow: `.github/workflows/deploy-pages.yml`
+- 基础路径 `/PageAtlas`
+- 工作流：`.github/workflows/deploy-pages.yml`
 
-### GitHub repository settings checklist
+### GitHub 仓库设置清单
 
-Before first release, confirm these repository settings in GitHub:
+首次发布前，请在 GitHub 确认以下设置：
 
 1. `Settings -> Pages -> Build and deployment -> Source` = `GitHub Actions`
 2. `Settings -> Actions -> General -> Workflow permissions` = `Read and write permissions`
-3. Default branch is `main`
-4. The repository is public, or your Pages plan supports private repo publishing
+3. 默认分支为 `main`
+4. 仓库为公开，或你的 Pages 计划支持私有仓库发布
 
-### Publish flow
+### 发布流程
 
-Push to `main` and GitHub Actions will build and deploy the contents of `build/` to Pages.
+推送到 `main` 后，GitHub Actions 会自动构建并将 `build/` 的内容部署到 Pages。
 
-## BYOK Setup Tips
+## BYOK 使用建议
 
-For the smoothest Lite experience:
+为了获得最佳的 Lite 体验：
 
-- prefer providers or gateways that allow browser CORS
-- use multimodal-capable models for scanned/image-only pages
-- keep a saved OpenAI-compatible preset for repeated use
-- test one provider at a time if you see browser network failures
+- 优先选择支持浏览器 CORS 的提供商或网关
+- 对扫描页/纯图片页使用支持多模态的模型
+- 保存一份 OpenAI 兼容预设以便反复使用
+- 如果出现浏览器网络故障，逐个测试不同提供商
 
-## Current Limitations
+## 当前限制
 
-- No backend means no server-side OCR jobs, task queues, or server caching
-- Large PDFs are still memory-intensive because extraction happens in-browser
-- Multimodal Q&A is the fallback for image-only pages; there is no separate OCR persistence pipeline in Lite
-- Some providers may fail in-browser due to CORS even with a valid API key
+- 无后端意味着没有服务端 OCR 任务、任务队列或服务端缓存
+- 大型 PDF 仍然占用较多内存，因为提取在浏览器中完成
+- 多模态问答是纯图片页的兜底方案；Lite 版没有独立的 OCR 持久化流水线
+- 部分提供商即使有有效 API Key，也可能因浏览器 CORS 限制而失败
 
-## License
+## 许可证
 
-This project remains GPLv3. If you redistribute modified versions, preserve the required copyright and license notices.
+本项目仍为 GPLv3 协议。如果你分发修改版本，请保留所需的版权声明和许可证声明。
