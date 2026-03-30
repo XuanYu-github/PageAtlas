@@ -1,7 +1,11 @@
 <script lang="ts">
   import {createEventDispatcher} from 'svelte';
-  import {Trash2, Plus} from 'lucide-svelte';
   import {t} from 'svelte-i18n';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import PixelButton from './pixel/PixelButton.svelte';
+  import PixelCard from './pixel/PixelCard.svelte';
+  import PixelInput from './pixel/PixelInput.svelte';
+  import {iconPlus, iconTrash} from './icons';
 
   export let tocRanges: {start: number; end: number; id: string}[] = [];
   export let activeRangeIndex: number = 0;
@@ -28,25 +32,25 @@
   }
 </script>
 
-<div class="border-black border-2 rounded-lg p-3 my-4 bg-blue-100 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+<div class="panel-field p-3 my-4">
   <div class="flex justify-between items-center mb-2">
-    <h3 class="font-bold">{title || $t('label.toc_pages_selection')}</h3>
-    <button
+    <h3 class="farm-section-title !mb-0">{title || $t('label.toc_pages_selection')}</h3>
+    <PixelButton
       on:click={addRange}
-      class="p-1 rounded-md hover:bg-black/10 transition-colors"
+      size="icon"
+      variant="leaf"
+      class="w-10 h-10"
       title={addRangeTitle || $t('label.add_range')}
     >
-      <Plus size={18} />
-    </button>
+      <PixelIcon size={18} pixels={iconPlus} />
+    </PixelButton>
   </div>
 
   <div class="flex flex-col gap-3">
     {#each tocRanges as range, i (range.id)}
-      <div
-        class="flex flex-col gap-2 p-2 rounded border-2 transition-all cursor-pointer {i ===
-        activeRangeIndex
-          ? 'border-blue-500 bg-white/50'
-          : 'border-transparent hover:bg-black/[0.03]'}"
+      <PixelCard
+        variant={i === activeRangeIndex ? 'water' : 'paper'}
+        class={`flex flex-col gap-2 p-3 cursor-pointer transition-all ${i === activeRangeIndex ? 'translate-x-[4px]' : ''}`}
         role="button"
         tabindex="0"
         on:click={() => setActiveRange(i)}
@@ -58,16 +62,21 @@
         }}
       >
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider"
+          <span class="text-xs font-bold text-[color:var(--pa-ink-soft)] uppercase tracking-wider"
             >{$t('label.range_n', {values: {n: i + 1}})}</span
           >
           {#if tocRanges.length > 1}
-            <button
-              on:click|stopPropagation={() => removeRange(i)}
-              class="text-blue-600 p-1 hover:bg-blue-100 rounded"
+            <PixelButton
+              on:click={(event) => {
+                event.stopPropagation();
+                removeRange(i);
+              }}
+              size="icon"
+              variant="danger"
+              class="w-9 h-9 text-[color:var(--pa-ink-inverse)]"
             >
-              <Trash2 size={14} />
-            </button>
+              <PixelIcon size={14} pixels={iconTrash} />
+            </PixelButton>
           {/if}
         </div>
 
@@ -75,35 +84,35 @@
           <div class="flex flex-col gap-1 flex-1">
             <label
               for={`start-${range.id}`}
-              class="text-xs font-bold text-gray-600">{$t('label.start')}</label
+              class="text-xs font-bold text-[color:var(--pa-ink-soft)]">{$t('label.start')}</label
             >
-            <input
+            <PixelInput
               type="number"
               id={`start-${range.id}`}
               bind:value={range.start}
               on:input={handleRangeChange}
               min={1}
               max={totalPages}
-              class="border-2 border-black rounded px-2 py-1 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="text-sm"
             />
           </div>
           <div class="flex flex-col gap-1 flex-1">
             <label
               for={`end-${range.id}`}
-              class="text-xs font-bold text-gray-600">{$t('label.end')}</label
+              class="text-xs font-bold text-[color:var(--pa-ink-soft)]">{$t('label.end')}</label
             >
-            <input
+            <PixelInput
               type="number"
               id={`end-${range.id}`}
               bind:value={range.end}
               on:input={handleRangeChange}
               min={range.start}
               max={totalPages}
-              class="border-2 border-black rounded px-2 py-1 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="text-sm"
             />
           </div>
         </div>
-      </div>
+      </PixelCard>
     {/each}
   </div>
 </div>

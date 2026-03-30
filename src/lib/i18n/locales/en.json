@@ -3,6 +3,26 @@
     "title": "PageAtlas · AI PDF ToC, Q&A, and Knowledge Board",
     "description": "Open-source PDF workspace for ToC generation, page-level and chapter-level Q&A, multimodal reading for scanned files, and AI-powered knowledge boards."
   },
+  "header": {
+    "subtitle": "Build a table of contents, ask questions by page, and map the document into a clear knowledge workspace.",
+    "help": "How to Use",
+    "github": "View on GitHub",
+    "github_aria": "View project on GitHub"
+  },
+  "shell": {
+    "workbench": "Workbench",
+    "reading_desk": "Reading Desk",
+    "graph_entry": "Graph",
+    "graph_title": "Show Content Graph",
+    "api_entry": "API",
+    "qa_short": "QA",
+    "toc_short": "ToC",
+    "background_only": "Show background only",
+    "restore_workspace": "Restore workspace"
+  },
+  "footer": {
+    "log": "Season Log"
+  },
   "settings": {
     "title": "ToC Settings",
     "toggle_expand": "Toggle Expand/Collapse",
@@ -41,6 +61,50 @@
     "openai_preset_default_applied": "Default preset applied.",
     "openai_preset_imported": "Imported {count} preset(s).",
     "openai_preset_import_failed": "Failed to import presets.",
+    "test_connection": "Test Connection",
+    "testing_connection": "Testing...",
+    "connection_success": "Connection successful via {provider}.",
+    "connection_failed": "Connection failed: {message}",
+    "connection_verified": "Verified",
+    "error_api_key_missing": "API Key is missing.",
+    "error_model_missing": "The selected model is missing.",
+    "error_model_not_found": "The configured model was not found on this endpoint.",
+    "error_base_url_invalid": "Base URL is invalid. Please enter a full URL.",
+    "error_network_unreachable": "The browser could not reach this endpoint host at all. Check DNS, HTTPS certificate, proxy, or local network restrictions.",
+    "error_cors_models_blocked": "The endpoint host is reachable, but GET /models did not return a readable browser response. This usually means browser CORS or preflight is blocked.",
+    "error_cors_chat_blocked": "GET /models succeeded, but POST /chat/completions did not return a readable browser response. This usually means the chat route is blocked by browser CORS or preflight.",
+    "error_network_or_cors": "The browser did not receive an HTTP response. This is usually a CORS or network restriction. If the same API works in desktop software, the provider may not allow browser CORS.",
+    "error_unauthorized": "Authentication failed (401). Check whether the API Key is correct.",
+    "error_forbidden": "Access denied (403). The key or account does not have permission.",
+    "error_not_found": "Endpoint or model not found (404). Check the Base URL and model / endpoint ID.",
+    "error_rate_limited": "Rate limit reached (429). Try again later or switch credentials.",
+    "error_unknown": "Unknown connection error.",
+    "connection_stage_models": "Model List",
+    "connection_stage_chat": "Chat Completion",
+    "connection_stage_generate": "Text Generation",
+    "connection_stage_success": "Success",
+    "connection_stage_failed": "Failed",
+    "connection_stage_skipped": "Skipped",
+    "connection_stage_models_success": "GET /models returned successfully.",
+    "connection_stage_chat_success": "POST /chat/completions returned successfully.",
+    "connection_stage_generate_success": "The minimal text request succeeded.",
+    "llm_provider": "LLM Provider",
+    "provider_auto": "Auto",
+    "provider_openai_compatible": "OpenAI Compatible",
+    "base_url": "Base URL",
+    "text_model": "Text Model",
+    "vision_model_optional": "Vision Model (Optional)",
+    "reasoning_effort": "Reasoning Effort",
+    "reasoning_effort_hint": "OpenAI-compatible gateways can use this to control thinking depth. \"None\" omits the parameter.",
+    "reasoning_effort_none": "None",
+    "reasoning_effort_low": "Low",
+    "reasoning_effort_medium": "Medium",
+    "reasoning_effort_high": "High",
+    "reasoning_effort_xhigh": "Ultra High (xhigh)",
+    "endpoint_id_text": "Endpoint ID (Text/Lite)",
+    "endpoint_id_vision": "Endpoint ID (Vision/Pro)",
+    "key_label": "API Key",
+    "learn_page_labels": "Learn more about PDF Page Labels",
     "add_numbering": "Add Numbering",
     "style": "Style",
     "none": "None",
@@ -98,6 +162,43 @@
     "save": "Save",
     "saved": "Saved",
     "close_hint": "Close"
+  },
+  "viewer": {
+    "no_file": "Untitled PDF",
+    "page_marker": "PAGE",
+    "scroll_marker": "SCROLL",
+    "read_mode_menu": "Reading mode",
+    "read_mode_single": "Single Page",
+    "read_mode_single_continuous": "Single Continuous",
+    "read_mode_two_page": "Two Page",
+    "read_mode_two_page_continuous": "Two Page Continuous",
+    "fit_actual_size": "Actual Size",
+    "fit_page": "Fit Page",
+    "fit_width": "Fit Width",
+    "fit_viewport": "Fit Viewport"
+  },
+  "help_modal": {
+    "title": "How to Use PageAtlas",
+    "feedback": "Feedback",
+    "copy_email": "Click to copy email",
+    "copied": "Copied!",
+    "close": "Close help dialog",
+    "close_button": "Close modal"
+  },
+  "update_modal": {
+    "title": "New Version",
+    "available": "v{version} is available!",
+    "failed": "Update Failed:",
+    "whats_new": "What's New:",
+    "default_body": "Bug fixes and performance improvements.",
+    "later": "Later",
+    "installing": "Installing...",
+    "update_now": "Update Now",
+    "close": "Close update dialog"
+  },
+  "about": {
+    "back_to_tool": "Back to Tool",
+    "kicker": "Village Almanac"
   },
   "status": {
     "loading_rendering": "Loading PDF...",
@@ -182,8 +283,14 @@
     "range_start": "From",
     "range_end": "To",
     "question_placeholder": "Ask what this page explains, summarizes, or proves...",
+    "upload_image": "Upload Image",
+    "paste_image_hint": "You can also paste an image with Ctrl/Cmd + V.",
     "ask": "Ask PDF",
     "asking": "Asking...",
+    "editing_message": "Editing the selected question.",
+    "cancel_edit": "Cancel Edit",
+    "edit_message": "Edit",
+    "copy_message": "Copy",
     "messages_empty": "Answers with page citations will appear here.",
     "source_pages": "Source Pages",
     "jump_to_page": "Page {page}",
@@ -227,6 +334,7 @@
   "star_request": {
     "title": "Enjoying PageAtlas?",
     "body": "If this tool helped you, please consider giving us a star on GitHub or sharing your feedback!",
+    "notice": "Festival Notice",
     "btn_star": "Star on GitHub",
     "btn_feedback": "Give Feedback",
     "btn_maybe_later": "Maybe Later",
@@ -234,6 +342,7 @@
   },
   "knowledge_board": {
     "title": "KNOWLEDGE BOARD",
+    "beta_badge": "BETA",
     "btn_investigate": "Investigate",
     "btn_connecting": "Connecting...",
     "msg_generate_toc": "Generate ToC to start...",
@@ -244,6 +353,12 @@
     "beta": "It's beta now, maybe beta forever",
     "hide_graph": "Hide Entry",
     "export_graph": "Export Knowledge Board"
+  },
+  "tooltip_common": {
+    "copied": "Copied!"
+  },
+  "common": {
+    "close": "Close"
   },
   "error": {
     "no_page_ranges": "No page ranges provided.",

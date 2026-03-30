@@ -18,10 +18,9 @@
   import {generateToc} from '$lib/toc-service';
   import {applyCustomPrefix} from '$lib/utils/prefix';
   import {setPageLabels} from '$lib/pdf/page-labels';
+  import {createBrowserAiConfig, loadBrowserAiConfigFromStorage} from '$lib/client/ai-config';
 
   import Toast from '../components/Toast.svelte';
-  import Footer from '../components/Footer.svelte';
-
   import AiLoadingModal from '../components/modals/AiLoadingModal.svelte';
   import OffsetModal from '../components/modals/OffsetModal.svelte';
   import HelpModal from '../components/modals/HelpModal.svelte';
@@ -32,10 +31,12 @@
   import SeoJsonLd from '../components/SeoJsonLd.svelte';
 
   import TocRelation from '../components/KnowledgeBoard.svelte';
-  import {ChevronRight, ChevronLeft, MessageSquare, ListOrdered} from 'lucide-svelte';
+  import PixelIcon from '../components/icons/PixelIcon.svelte';
+  import {iconArrowLeft, iconBrain, iconChat, iconKey, iconList} from '../components/icons/index';
 
   import type {
     ChapterSourceFormat,
+    QaAttachment,
     QaChapterReference,
     QaMessageMeta,
     QaPanelMessage,
@@ -92,7 +93,7 @@
 
   let tocRanges = [{start: 1, end: 1, id: 'default'}];
   let activeRangeIndex = 0;
-  let activeSidebarMode: 'toc' | 'qa' = 'toc';
+  let activeSidebarMode: 'toc' | 'qa' | 'api' = 'toc';
   let tocPageCount = 0;
   let addPhysicalTocPage = false;
   let isPreviewMode = false;
@@ -104,19 +105,13 @@
   let lastPdfContentJson = '';
   let lastInsertAtPage = 2;
   let prefetchPageNum = 0;
+  let previewAnchorPage = 0;
   let lastConfigJson = '';
   let currentTocPath: TocItem[] = [];
   let currentContentPage: number | null = null;
+  let qaCurrentPage: number | null = null;
 
-  let customApiConfig = {
-    provider: '',
-    apiKey: '',
-    doubaoEndpointIdText: '',
-    doubaoEndpointIdVision: '',
-    openaiBaseUrl: '',
-    openaiModelText: '',
-    openaiModelVision: '',
-  };
+  let customApiConfig = createBrowserAiConfig();
   let tocEditor: any;
 
   type QaUploadState = 'idle' | 'uploading' | 'processing' | 'ready' | 'error' | 'cancelled';
@@ -197,6 +192,29 @@
     return pdfState.currentPage - tocPageCount;
   }
 
+  function getQaCurrentPage(): number | null {
+    if (!pdfState.currentPage || pdfState.totalPages === 0) return null;
+
+    const originalPageCount = originalPdfInstance?.numPages || 0;
+    if (originalPageCount === 0) return null;
+
+    if (!isPreviewMode || !addPhysicalTocPage) {
+      return Math.min(pdfState.currentPage, originalPageCount);
+    }
+
+    const insertAt = config?.insertAtPage || 2;
+
+    if (pdfState.currentPage < insertAt) {
+      return pdfState.currentPage;
+    }
+
+    if (pdfState.currentPage < insertAt + tocPageCount) {
+      return Math.min(pdfState.currentPage, originalPageCount);
+    }
+
+    return Math.min(pdfState.currentPage - tocPageCount, originalPageCount);
+  }
+
   function contentPageToViewerPage(page: number): number {
     if (!isPreviewMode || !addPhysicalTocPage) {
       return page;
@@ -206,7 +224,22 @@
     return page >= insertAt ? page + tocPageCount : page;
   }
 
+  function getPreviewStartPage(): number {
+    const ranges = activeSidebarMode === 'qa' ? qaPageRanges : tocRanges;
+    const rangeIndex = activeSidebarMode === 'qa' ? qaActiveRangeIndex : activeRangeIndex;
+    const activeRange = ranges[rangeIndex] || ranges[0];
+    const contentPage = activeRange?.start || pdfState.currentPage || 1;
+
+    if (!addPhysicalTocPage) {
+      return contentPage;
+    }
+
+    const insertAt = config?.insertAtPage || 2;
+    return contentPage >= insertAt ? contentPage + tocPageCount : contentPage;
+  }
+
   $: currentContentPage = getCurrentContentPage();
+  $: qaCurrentPage = getQaCurrentPage();
 
   $: if (qaPageCount > 0) {
     qaPageRanges = qaPageRanges.map((range) => ({
@@ -248,16 +281,8 @@
 
   onMount(() => {
     $pdfService = new PDFService();
-
-    const hideUntil = localStorage.getItem('pageatlas_hide_graph_entrance_until');
-    if (hideUntil) {
-      const expiry = parseInt(hideUntil, 10);
-      if (Date.now() < expiry) {
-        isGraphEntranceVisible = false;
-      } else {
-        localStorage.removeItem('pageatlas_hide_graph_entrance_until');
-      }
-    }
+    customApiConfig = loadBrowserAiConfigFromStorage();
+    isGraphEntranceVisible = true;
 
     // Global error handlers
     const handleRejection = (event: PromiseRejectionEvent) => {
@@ -580,6 +605,8 @@
         }
 
         isPreviewMode = true;
+        previewAnchorPage = getPreviewStartPage();
+        pdfState.currentPage = previewAnchorPage;
         toggleShowInsertTocHint();
         await tick();
       } catch (error: any) {
@@ -1035,7 +1062,7 @@
 
   const handleAddQaRange = () => {
     const lastRange = qaPageRanges.length > 0 ? qaPageRanges[qaPageRanges.length - 1] : null;
-    let nextStart = lastRange ? lastRange.end + 1 : currentContentPage || 1;
+    let nextStart = lastRange ? lastRange.end + 1 : qaCurrentPage || 1;
 
     if (nextStart < 1) nextStart = 1;
 
@@ -1055,7 +1082,7 @@
     qaPageRanges = qaPageRanges.filter((_, i) => i !== index);
 
     if (qaPageRanges.length === 0) {
-      qaPageRanges = [{start: currentContentPage || 1, end: currentContentPage || 1, id: `qa-range-${Date.now()}`}];
+      qaPageRanges = [{start: qaCurrentPage || 1, end: qaCurrentPage || 1, id: `qa-range-${Date.now()}`}];
       qaActiveRangeIndex = 0;
       return;
     }
@@ -1150,22 +1177,62 @@
     }
   };
 
-  const handlePdfQaAsk = async (event: CustomEvent<{question: string; scope: QaScope}>) => {
+  async function buildQaPageThumbnailAttachments(scope: QaScope): Promise<QaAttachment[]> {
+    if (!originalPdfInstance || !$pdfService) return [];
+
+    const {selectPagesFromScope} = await import('$lib/client/pdf-qa');
+    const selectedPages = selectPagesFromScope(scope, qaLocalPages).slice(0, 3);
+
+    return await Promise.all(
+      selectedPages.map(async (page) => ({
+        id: `page-thumb-${page.page}-${Date.now()}`,
+        name: `page-${page.page}.jpg`,
+        dataUrl: await $pdfService!.getPageAsImage(originalPdfInstance, page.page, 0.55, 768),
+        mimeType: 'image/jpeg',
+        kind: 'page-thumbnail' as const,
+        page: page.page,
+      })),
+    );
+  }
+
+  function replaceQaConversation(
+    nextMessages: QaPanelMessage[],
+    replaceMessageId?: string
+  ): QaPanelMessage[] {
+    if (!replaceMessageId) return nextMessages;
+
+    return nextMessages.filter((message) =>
+      message.id !== replaceMessageId && message.relatedUserMessageId !== replaceMessageId,
+    );
+  }
+
+  const handlePdfQaAsk = async (event: CustomEvent<{
+    question: string;
+    scope: QaScope;
+    attachments?: QaAttachment[];
+    replaceMessageId?: string;
+  }>) => {
     if (!originalPdfInstance || qaLocalPages.length === 0 || qaUploadState !== 'ready') {
       toastProps = {show: true, message: $t('qa.not_ready'), type: 'error'};
       return;
     }
 
-    const {question, scope} = event.detail;
+    const {question, scope, attachments = [], replaceMessageId} = event.detail;
     const messageMeta = createQaMessageMeta(scope);
+    const pageThumbnailAttachments = await buildQaPageThumbnailAttachments(scope);
+    const userMessageId = replaceMessageId || `user-${Date.now()}`;
+    const baseMessages = replaceQaConversation(qaMessages, replaceMessageId);
     const userMessage: QaPanelMessage = {
-      id: `user-${Date.now()}`,
+      id: userMessageId,
       role: 'user',
       content: question,
       meta: messageMeta,
+      scope,
+      attachments: [...attachments, ...pageThumbnailAttachments],
+      format: 'plain',
     };
 
-    qaMessages = [...qaMessages, userMessage];
+    qaMessages = [...baseMessages, userMessage];
     isQaAsking = true;
 
     try {
@@ -1185,27 +1252,34 @@
           openaiModelVision: customApiConfig.openaiModelVision,
         },
         getPageImage: (pageNumber) => $pdfService!.getPageAsImage(originalPdfInstance, pageNumber),
+        userImages: attachments,
       });
 
       qaMessages = [
-        ...qaMessages,
+        ...baseMessages,
+        userMessage,
         {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: result.answer,
           citations: result.citations || [],
           meta: messageMeta,
+          relatedUserMessageId: userMessageId,
+          format: 'markdown',
         },
       ];
     } catch (error: any) {
       toastProps = {show: true, message: error.message || $t('qa.ask_failed'), type: 'error'};
       qaMessages = [
-        ...qaMessages,
+        ...baseMessages,
+        userMessage,
         {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: error.message || $t('qa.ask_failed'),
           meta: messageMeta,
+          relatedUserMessageId: userMessageId,
+          format: 'plain',
         },
       ];
     } finally {
@@ -1273,6 +1347,14 @@
     toastProps = {show: true, message: 'API Settings Saved!', type: 'success'};
   }
 
+  function handleApiConfigNotify(event: CustomEvent<{message: string; type: 'success' | 'error' | 'info'}>) {
+    toastProps = {
+      show: true,
+      message: event.detail.message,
+      type: event.detail.type,
+    };
+  }
+
   const handleCloseNextStepHint = () => {
     showNextStepHint = false;
     const expiry = Date.now() + THIRTY_DAYS;
@@ -1287,41 +1369,35 @@
 {#if !showGraphDrawer && tocItems && isGraphEntranceVisible}
   <button
     transition:fly={{x: -50, duration: 300}}
-    class="fixed -left-1 p-1 md:p-2 md:left-0 top-[40vh] z-40 bg-white border-2 border-black border-l-0 rounded-r-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-yellow-200 transition-colors flex flex-col items-center gap-2 group"
+    class="fixed -left-1 p-2 md:left-0 top-[16.25rem] z-40 inventory-card side-tool-button border-l-0 shadow-[var(--pa-shadow-stack-soft)] flex flex-col items-center justify-start gap-4 group w-[68px] min-h-[148px]"
     on:click={() => (showGraphDrawer = true)}
-    title="Show Content Graph"
+    title={$t('shell.graph_title')}
   >
-    <div class="writing-mode-vertical text-xs font-bold font-mono tracking-widest uppercase rotate-180 select-none">
-      Graph
+    <PixelIcon size={18} pixels={iconBrain} class="mt-2" />
+    <div class="side-tool-button__label writing-mode-vertical font-bold font-pixel-ui tracking-normal uppercase select-none">
+      {$t('shell.graph_entry')}
     </div>
-    <ChevronRight class="w-5 h-5 group-hover:translate-x-1 transition-transform" />
   </button>
 {/if}
 
-<div
-  class={`fixed inset-y-0 left-0 z-50 flex transition-transform duration-300 ease-in-out ${showGraphDrawer ? 'translate-x-0' : '-translate-x-full'}`}
->
-  <div class="h-full w-[85vw] md:w-[540px] bg-white shadow-[10px_0_15px_-3px_rgba(0,0,0,0.1)] flex flex-col relative">
-    <button
-      class="p-2 right-0 bottom-[50%] absolute z-50 inline text-gray-400"
-      on:click={() => (showGraphDrawer = false)}
-    >
-      <ChevronLeft class="w-8 h-8 hover:-translate-x-1 transition-transform" />
-    </button>
+  <div
+    class={`fixed inset-y-0 left-0 z-50 flex transition-transform duration-300 ease-in-out ${showGraphDrawer ? 'translate-x-0' : '-translate-x-full'}`}
+  >
+    <div class="h-full w-[88vw] md:w-[560px] flex flex-col relative m-2 md:m-3 overflow-hidden">
+      <button
+        class="farm-icon-button absolute z-50 right-3 top-3"
+        on:click={() => (showGraphDrawer = false)}
+      >
+        <PixelIcon size={20} pixels={iconArrowLeft} />
+      </button>
 
-    <div class="flex-1 overflow-hidden relative w-full h-full bg-slate-50">
+      <div class="flex-1 overflow-hidden relative w-full h-full">
       {#key $curFileFingerprint}
         <TocRelation
           items={$tocItems}
           apiConfig={customApiConfig}
           onJumpToPage={jumpToPage}
-          title={pdfState.filename ? `${pdfState.filename}`.replace('.pdf', '') : 'No file loaded'}
-          onHide={() => {
-            showGraphDrawer = false;
-            isGraphEntranceVisible = false;
-            const expiry = Date.now() + THIRTY_DAYS;
-            localStorage.setItem('pageatlas_hide_graph_entrance_until', expiry.toString());
-          }}
+          title={pdfState.filename ? `${pdfState.filename}`.replace('.pdf', '') : $t('viewer.no_file')}
         />
       {/key}
     </div>
@@ -1332,7 +1408,7 @@
       type="button"
       aria-label="Close knowledge graph drawer"
       transition:fade={{duration: 200}}
-      class="flex-1 bg-black/20 backdrop-blur-sm cursor-pointer"
+      class="flex-1 bg-[rgba(60,40,24,0.42)] cursor-pointer"
       on:click={() => (showGraphDrawer = false)}
     ></button>
   {/if}
@@ -1349,63 +1425,77 @@
 
 {#if $isLoading}
   <div class="fixed inset-0 bg-white flex items-center justify-center z-50">
-    <div class="animate-spin rounded-full h-12 w-12 border-4 border-black border-t-transparent"></div>
+    <div class="pixel-spinner pixel-spinner--lg"></div>
   </div>
 {:else}
-  <h1 class="sr-only">Generate PDF bookmarks / table of contents in browser — AI-powered, private, online and free.</h1>
+  <h1 class="sr-only">{$t('meta.title')}</h1>
 
   <div
-    class="flex flex-col mt-5 lg:flex-row lg:mt-8 p-2 md:p-4 md:pr-3 gap-4 lg:gap-8 mx-auto w-[95%] md:w-[90%] xl:w-[80%] 3xl:w-[75%] justify-between"
+    class="farm-scene-grid workshop-shell mt-8 mb-8 mx-auto w-[95%] md:w-[90%] xl:w-[80%] 3xl:w-[75%] justify-between"
   >
     <div class="flex lg:hidden gap-2 w-full">
       <button
         type="button"
-        class="flex-1 border-2 border-black rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-2 transition-colors"
-        class:bg-black={activeSidebarMode === 'qa'}
-        class:text-white={activeSidebarMode === 'qa'}
-        class:bg-white={activeSidebarMode !== 'qa'}
+        class="farm-tab flex-1 px-3 py-3 font-bold flex items-center justify-center gap-2"
+        class:is-active={activeSidebarMode === 'api'}
+        on:click={() => (activeSidebarMode = 'api')}
+      >
+        <PixelIcon size={16} pixels={iconKey} />
+        API
+      </button>
+      <button
+        type="button"
+        class="farm-tab flex-1 px-3 py-3 font-bold flex items-center justify-center gap-2"
+        class:is-active={activeSidebarMode === 'qa'}
         on:click={() => (activeSidebarMode = 'qa')}
       >
-        <MessageSquare size={16} />
+        <PixelIcon size={16} pixels={iconChat} />
         {$t('qa.title')}
       </button>
       <button
         type="button"
-        class="flex-1 border-2 border-black rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-2 transition-colors"
-        class:bg-black={activeSidebarMode === 'toc'}
-        class:text-white={activeSidebarMode === 'toc'}
-        class:bg-white={activeSidebarMode !== 'toc'}
+        class="farm-tab flex-1 px-3 py-3 font-bold flex items-center justify-center gap-2"
+        class:is-active={activeSidebarMode === 'toc'}
         on:click={() => (activeSidebarMode = 'toc')}
       >
-        <ListOrdered size={16} />
+        <PixelIcon size={16} pixels={iconList} />
         {$t('mode.toc')}
       </button>
     </div>
 
-    <div class="hidden lg:flex flex-col gap-2 self-start sticky top-28">
+    <div class="hidden lg:flex flex-col gap-3 self-start sticky top-24 side-tool-post">
       <button
         type="button"
-        class="p-2 min-h-[120px] w-12 border-2 border-black rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-colors flex flex-col items-center justify-between"
-        class:bg-black={activeSidebarMode === 'qa'}
-        class:text-white={activeSidebarMode === 'qa'}
-        class:bg-white={activeSidebarMode !== 'qa'}
+        class="inventory-card side-tool-button p-2 min-h-[136px] w-[72px] flex flex-col items-center justify-start gap-5"
+        class:is-active={activeSidebarMode === 'qa'}
+        class:brightness-95={activeSidebarMode !== 'qa'}
         on:click={() => (activeSidebarMode = 'qa')}
         title={$t('qa.title')}
       >
-        <MessageSquare size={18} class="mt-1" />
-        <span class="writing-mode-vertical text-xs font-bold tracking-widest uppercase rotate-180 select-none">QA</span>
+        <PixelIcon size={18} pixels={iconChat} class="mt-2" />
+        <span class="side-tool-button__label writing-mode-vertical font-bold font-pixel-ui tracking-normal uppercase select-none">{$t('shell.qa_short')}</span>
       </button>
       <button
         type="button"
-        class="p-2 min-h-[120px] w-12 border-2 border-black rounded-xl shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-colors flex flex-col items-center justify-between"
-        class:bg-black={activeSidebarMode === 'toc'}
-        class:text-white={activeSidebarMode === 'toc'}
-        class:bg-white={activeSidebarMode !== 'toc'}
+        class="inventory-card side-tool-button p-2 min-h-[136px] w-[72px] flex flex-col items-center justify-start gap-5"
+        class:is-active={activeSidebarMode === 'toc'}
+        class:brightness-95={activeSidebarMode !== 'toc'}
         on:click={() => (activeSidebarMode = 'toc')}
         title={$t('mode.toc')}
       >
-        <ListOrdered size={18} class="mt-1" />
-        <span class="writing-mode-vertical text-xs font-bold tracking-widest uppercase rotate-180 select-none">TOC</span>
+        <PixelIcon size={18} pixels={iconList} class="mt-2" />
+        <span class="side-tool-button__label writing-mode-vertical font-bold font-pixel-ui tracking-normal uppercase select-none">{$t('shell.toc_short')}</span>
+      </button>
+      <button
+        type="button"
+        class="inventory-card side-tool-button p-2 min-h-[136px] w-[72px] flex flex-col items-center justify-start gap-5"
+        class:is-active={activeSidebarMode === 'api'}
+        class:brightness-95={activeSidebarMode !== 'api'}
+        on:click={() => (activeSidebarMode = 'api')}
+        title={$t('settings.api_settings_title')}
+      >
+        <PixelIcon size={18} pixels={iconKey} class="mt-2" />
+        <span class="side-tool-button__label writing-mode-vertical font-bold font-pixel-ui tracking-normal uppercase select-none">{$t('shell.api_entry')}</span>
       </button>
     </div>
 
@@ -1426,7 +1516,7 @@
       {qaPageCount}
       {qaTextPageCount}
       {qaProcessedPageCount}
-      qaCurrentPage={currentContentPage}
+      {qaCurrentPage}
       {qaPageRanges}
       {qaActiveRangeIndex}
       {isQaAsking}
@@ -1442,6 +1532,7 @@
       on:closeNextStepHint={handleCloseNextStepHint}
       on:apiConfigChange={handleApiConfigChange}
       on:apiConfigSave={handleApiConfigSave}
+      on:notify={handleApiConfigNotify}
       on:updateField={(e) => updateTocField(e.detail.path, e.detail.value)}
       on:jumpToTocPage={jumpToTocPage}
       on:jumpToPage={(e) => {
@@ -1476,13 +1567,14 @@
       {tocPdfInstance}
       {isPreviewMode}
       {isPreviewLoading}
-      tocRanges={activeSidebarMode === 'toc' ? tocRanges : qaPageRanges}
-      activeRangeIndex={activeSidebarMode === 'toc' ? activeRangeIndex : qaActiveRangeIndex}
+      tocRanges={activeSidebarMode === 'qa' ? qaPageRanges : tocRanges}
+      activeRangeIndex={activeSidebarMode === 'qa' ? qaActiveRangeIndex : activeRangeIndex}
       {tocPageCount}
       {addPhysicalTocPage}
       {jumpToTocPage}
       {currentTocPath}
       {prefetchPageNum}
+      {previewAnchorPage}
       bind:isDragging
       on:fileselect={(e) => loadPdfFile(e.detail)}
       on:viewerMessage={handleViewerMessage}
@@ -1491,9 +1583,6 @@
       on:export={exportPDF}
     />
   </div>
-
-  <Footer />
-
   <SeoJsonLd title={$t('meta.title')} />
 
   <AiLoadingModal

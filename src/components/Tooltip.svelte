@@ -1,6 +1,7 @@
 <script lang="ts">
   import {fly} from 'svelte/transition';
   import {backOut} from 'svelte/easing';
+  import {t} from 'svelte-i18n';
 
   export let className = '';
   export let text = 'Tooltip text';
@@ -104,7 +105,7 @@
     >
       <div class="relative z-10 drop-shadow-sm">
         {#if isCopied}
-          <span class="inline-block uppercase tracking-widest font-black">COPIED!</span>
+          <span class="inline-block uppercase tracking-widest font-black">{$t('tooltip_common.copied')}</span>
         {:else}
           {text}
         {/if}

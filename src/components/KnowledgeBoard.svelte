@@ -1,19 +1,10 @@
 <script lang="ts">
-  import {tick} from 'svelte';
+  import {onDestroy, onMount, tick} from 'svelte';
   import {t} from 'svelte-i18n';
   import rough from 'roughjs';
   import GraphNode from './GraphNode.svelte';
-  import {
-    Sparkles,
-    Loader2,
-    RefreshCw,
-    Maximize2,
-    Minimize2,
-    BrainCircuit,
-    BookOpen,
-    EyeOff,
-    Download,
-  } from 'lucide-svelte';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import {iconBook, iconBrain, iconDownload, iconMaximize, iconMinimize, iconRefresh, iconSparkle} from './icons/index';
   import {CARD_W, CARD_H, getRandomPaperColor, computeHierarchicalLayout, getClosestPoints} from '$lib/utils/graph';
 
   import type {TocItem} from '$lib/pdf/service';
@@ -37,7 +28,6 @@
   export let title = 'Untitled Book';
 
   export let onJumpToPage: (pageNumber: number) => void = () => {};
-  export let onHide: () => void = () => {};
 
   let graphData: GraphData = {nodes: [], edges: []};
 
@@ -50,11 +40,13 @@
 
   let isLoading = false;
   let isFullscreen = false;
+  let isDesktopShell = false;
   let activeNodeId: string | null = null;
 
   let svg: SVGSVGElement | null = null;
   let rc: RoughSvgRenderer | null = null;
   let viewportWidth = 0;
+  let viewportHeight = 0;
   let viewportElement: HTMLDivElement | null = null;
   let contentWrapper: HTMLDivElement | null = null;
 
@@ -69,6 +61,7 @@
   let startPanView = {x: viewX, y: viewY};
   const MIN_SCALE = 0.1;
   const MAX_SCALE = 5;
+  const DESKTOP_FULLSCREEN_TOP_OFFSET = 30;
 
   let dragTarget: KnowledgeGraphNode | null = null;
   let initialMouse = {x: 0, y: 0};
@@ -77,6 +70,16 @@
   let hasMovedDuringDrag = false;
 
   const ACTIVE_COLOR = '#60a5fa';
+
+  onMount(() => {
+    isDesktopShell = '__TAURI_INTERNALS__' in window;
+  });
+
+  onDestroy(() => {
+    if (typeof window !== 'undefined' && isFullscreen) {
+      window.dispatchEvent(new CustomEvent('pageatlas:knowledge-board-fullscreen', {detail: {active: false}}));
+    }
+  });
 
   const ROUGH_OPTS = {roughness: 2.5, bowing: 1.5, stroke: '#2d3436', strokeWidth: 1.5};
   const LINE_DIM = {roughness: 2, bowing: 1, stroke: '#e2e8f0', strokeWidth: 1};
@@ -162,12 +165,18 @@
       requestAnimationFrame(drawWall);
     }
 
-    canvasWidth = Math.max(maxX + CARD_W + 200, isFullscreen ? window.innerWidth : 400);
-    canvasHeight = Math.max(maxY + CARD_H + 200, isFullscreen ? window.innerHeight : 400);
+    const containerWidth = isFullscreen ? viewportWidth || window.innerWidth : viewportWidth || 400;
+    const containerHeight = isFullscreen ? viewportHeight || window.innerHeight : viewportHeight || 400;
+
+    canvasWidth = Math.max(maxX + CARD_W + 200, containerWidth);
+    canvasHeight = Math.max(maxY + CARD_H + 200, containerHeight);
   }
 
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pageatlas:knowledge-board-fullscreen', {detail: {active: isFullscreen}}));
+    }
     tick().then(() => {
       centerContent();
       updateCanvasSize();
@@ -397,8 +406,8 @@
     const contentWidth = contentMaxX - contentMinX;
     const contentHeight = contentMaxY - contentMinY;
 
-    const containerWidth = isFullscreen ? window.innerWidth : viewportWidth || 400;
-    const containerHeight = isFullscreen ? window.innerHeight : 400;
+    const containerWidth = isFullscreen ? viewportWidth || window.innerWidth : viewportWidth || 400;
+    const containerHeight = isFullscreen ? viewportHeight || window.innerHeight : viewportHeight || 400;
 
     scale = 1;
     viewX = (containerWidth - contentWidth) / 2 - contentMinX;
@@ -613,52 +622,45 @@
 />
 
 <div
-  class="bg-[#f0f0f0] flex flex-col overflow-hidden mx-auto
-{isFullscreen ? ' fixed inset-0 z-[9999] w-screen h-screen rounded-none' : ' relative h-full rounded-xl '}"
+  class="panel-paper flex flex-col overflow-hidden mx-auto h-full
+{isFullscreen
+  ? isDesktopShell
+    ? ` fixed left-0 right-0 bottom-0 top-[${DESKTOP_FULLSCREEN_TOP_OFFSET}px] z-[9999] w-screen h-[calc(100vh-${DESKTOP_FULLSCREEN_TOP_OFFSET}px)] rounded-none`
+    : ' fixed inset-0 z-[9999] w-screen h-screen rounded-none'
+  : ' relative '}"
 >
   <div class="absolute top-4 left-4 z-50 pointer-events-none select-none">
     {#if isFullscreen}
-      <div class="flex gap-2 text-gray-500 opacity-80">
-        <BookOpen size={32} />
-        <span class="font-serif text-xl tracking-wide">{title}</span>
+      <div class="dialog-board pixel-reading-surface pixel-overlay-bar text-[color:var(--pa-ink-soft)] opacity-95">
+        <PixelIcon size={24} pixels={iconBook} />
+        <span class="font-pixel-ui text-[16px] md:text-[18px] tracking-wide">{title}</span>
       </div>
     {:else}
-      <div class="flex items-center gap-2 text-lg z-50 md:text-2xl font-['HuiwenMincho'] text-gray-400 opacity-60">
-        <BrainCircuit size={28} />
-        <span>{$t('knowledge_board.title')}</span>
+      <div class="dialog-board pixel-reading-surface pixel-overlay-bar z-50 text-[color:var(--pa-ink-soft)] opacity-95">
+        <PixelIcon size={20} pixels={iconBrain} />
+        <span class="font-pixel-ui text-[16px] md:text-[18px]">{$t('knowledge_board.title')}</span>
 
         <span
           title={$t('knowledge_board.beta')}
-          class="hover:cursor-help ml-2 px-1 py-0 text-xs bg-yellow-300 text-yellow-900 font-bold rounded-full border-2 border-yellow-900 pointer-events-auto"
+          class="farm-badge hover:cursor-help ml-2 pointer-events-auto"
         >
-          BETA
+          {$t('knowledge_board.beta_badge')}
         </span>
       </div>
     {/if}
   </div>
 
-  {#if !isFullscreen}
-    <div class="absolute top-4 right-2 z-50">
-      <button
-        on:click={onHide}
-        class="p-1 backdrop-blur-sm rounded-full transition-transform text-gray-400 hover:scale-110"
-        title={$t('knowledge_board.hide_graph', {default: 'Hide Graph'})}
-      >
-        <EyeOff size={22} />
-      </button>
-    </div>
-  {/if}
-
   <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
   <div
     bind:clientWidth={viewportWidth}
+    bind:clientHeight={viewportHeight}
     bind:this={viewportElement}
     on:mousedown={handleContainerMouseDown}
     on:wheel={handleWheel}
     role="application"
     tabindex="0"
     aria-label={$t('knowledge_board.title')}
-    class="flex-1 overflow-hidden relative w-full h-full bg-[#f0f0f0] cursor-grab active:cursor-grabbing no-scrollbar block select-none"
+      class="flex-1 overflow-hidden relative w-full h-full panel-paper cursor-grab active:cursor-grabbing no-scrollbar block select-none"
   >
     <div class="absolute inset-0 z-0 bg-grid-pattern pointer-events-none"></div>
 
@@ -690,27 +692,21 @@
 
   {#if items.length === 0}
     <div
-      class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 font-['HuiwenMincho'] opacity-50 pointer-events-none z-0"
+      class="absolute inset-0 flex flex-col items-center justify-center text-[color:var(--pa-ink-soft)] font-pixel-ui opacity-80 pointer-events-none z-0"
     >
-      <RefreshCw
-        size={64}
-        class="mb-6"
-      />
+      <PixelIcon size={54} pixels={iconRefresh} class="mb-6" />
       <span class="text-3xl text-center">{$t('knowledge_board.msg_generate_toc')}</span>
     </div>
   {:else if !isLoading && items.length > 0 && graphData.nodes.length === 0}
     <div
-      class="absolute max-w-[80%] mx-auto text-center inset-0 flex flex-col items-center justify-center text-gray-400 font-['HuiwenMincho'] opacity-50 pointer-events-none z-0"
+      class="absolute max-w-[80%] mx-auto text-center inset-0 flex flex-col items-center justify-center text-[color:var(--pa-ink-soft)] font-pixel-ui opacity-80 pointer-events-none z-0"
     >
-      <Sparkles
-        size={64}
-        class="mb-6"
-      />
+      <PixelIcon size={54} pixels={iconSparkle} class="mb-6" />
       <span class="text-3xl">{$t('knowledge_board.msg_investigate')}</span>
     </div>
   {:else if isLoading}
     <div
-      class="absolute inset-0 max-w-[80%] mx-auto text-center flex flex-col items-center justify-center text-gray-400 font-['HuiwenMincho'] opacity-50 pointer-events-none z-0"
+      class="absolute inset-0 max-w-[80%] mx-auto text-center flex flex-col items-center justify-center text-[color:var(--pa-ink-soft)] font-pixel-ui opacity-80 pointer-events-none z-0"
     >
       <span class="text-3xl animate-bounce">{$t('knowledge_board.msg_generating')}</span>
     </div>
@@ -718,17 +714,17 @@
 
   {#if isFullscreen}
     <div
-      class="absolute bottom-4 left-4 font-['HuiwenMincho'] text-2xl text-gray-400 pointer-events-none z-30 opacity-60"
+      class="absolute bottom-4 left-4 text-2xl text-[color:var(--pa-ink-soft)] pointer-events-none z-30 opacity-95"
     >
-      <div class="flex items-center gap-2">
-        <BrainCircuit size={28} />
-        <span>{$t('knowledge_board.title')}</span>
+      <div class="dialog-board pixel-reading-surface pixel-overlay-bar">
+        <PixelIcon size={20} pixels={iconBrain} />
+        <span class="font-pixel-ui text-[16px] md:text-[18px]">{$t('knowledge_board.title')}</span>
 
         <span
           title={$t('knowledge_board.beta')}
-          class="hover:cursor-help ml-2 px-1 py-0 text-xs bg-yellow-300 text-yellow-900 font-bold rounded-full border-2 border-yellow-900 pointer-events-auto"
+          class="farm-badge hover:cursor-help ml-2 pointer-events-auto"
         >
-          BETA
+          {$t('knowledge_board.beta_badge')}
         </span>
       </div>
     </div>
@@ -736,19 +732,16 @@
 
   {#if items.length > 0}
     <div class="absolute bottom-5 right-20 z-50 flex gap-2">
-      <button
-        on:click={handleGenerateGraph}
-        disabled={isLoading || items.length === 0}
-        class="flex items-center gap-2 text-white px-5 py-2 rounded-lg bg-gradient-to-r from-indigo-400 to-cyan-400 disabled:opacity-50 transition-all active:scale-95 border-2 border-transparent font-['HuiwenMincho'] text-xl shadow-lg"
-      >
+        <button
+          on:click={handleGenerateGraph}
+          disabled={isLoading || items.length === 0}
+          class="btn farm-btn-water text-base disabled:opacity-50 min-w-[10rem]"
+        >
         {#if isLoading}
-          <Loader2
-            class="animate-spin"
-            size={20}
-          />
+          <div class="pixel-spinner"></div>
           <span>{$t('knowledge_board.btn_connecting')}</span>
         {:else}
-          <Sparkles size={20} />
+          <PixelIcon size={18} pixels={iconSparkle} />
           <span>{$t('knowledge_board.btn_investigate')}</span>
         {/if}
       </button>
@@ -756,24 +749,24 @@
       {#if graphData.nodes.length > 0}
         <button
           on:click={handleExportGraph}
-          class="px-3 active:scale-95 rounded-lg border-2 border-transparent transition-all text-white bg-gradient-to-r from-indigo-400 to-cyan-400"
+          class="farm-icon-button w-12 h-12"
           title={$t('knowledge_board.export_graph', {default: 'Export SVG'})}
         >
-          <Download size={24} />
+          <PixelIcon size={20} pixels={iconDownload} />
         </button>
       {/if}
     </div>
   {/if}
 
-  <div class="absolute bottom-4 right-4 z-50 flex items-center gap-2">
+    <div class="absolute bottom-4 right-4 z-50 flex items-center gap-2">
     <button
       on:click={toggleFullscreen}
-      class="p-3 rounded-full transition-all hover:scale-110 active:scale-95 text-gray-400"
+      class="farm-icon-button w-12 h-12"
     >
       {#if isFullscreen}
-        <Minimize2 size={30} />
+        <PixelIcon size={22} pixels={iconMinimize} />
       {:else}
-        <Maximize2 size={30} />
+        <PixelIcon size={22} pixels={iconMaximize} />
       {/if}
     </button>
   </div>
@@ -781,10 +774,9 @@
 
 <style>
   .bg-grid-pattern {
-    background-color: #fdfbf7;
-    background-image: linear-gradient(#e5e7eb 1px, transparent 1px),
-      linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
-    background-size: 20px 20px;
+    background:
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.03) 0 12px, rgba(255,255,255,0.015) 12px 24px),
+      linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
   }
 
   .no-scrollbar::-webkit-scrollbar {

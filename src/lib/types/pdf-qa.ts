@@ -3,6 +3,15 @@ export type QaCitation = {
   snippet: string;
 };
 
+export type QaAttachment = {
+  id: string;
+  name: string;
+  dataUrl: string;
+  mimeType: string;
+  kind: 'upload' | 'page-thumbnail';
+  page?: number;
+};
+
 export type ChapterSourceFormat = 'markdown' | 'latex';
 
 export type QaChapterReference = {
@@ -33,4 +42,8 @@ export type QaPanelMessage = {
   content: string;
   citations?: QaCitation[];
   meta?: QaMessageMeta;
+  attachments?: QaAttachment[];
+  scope?: QaScope;
+  relatedUserMessageId?: string;
+  format?: 'plain' | 'markdown';
 };

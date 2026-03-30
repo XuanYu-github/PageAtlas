@@ -1,8 +1,9 @@
 <script lang="ts">
-  import {BrainCircuit} from 'lucide-svelte';
   import {t} from 'svelte-i18n';
   import {createEventDispatcher} from 'svelte';
   import {CARD_W, CARD_H} from '$lib/utils/graph';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import {iconBrain} from './icons';
 
   import type {KnowledgeGraphNode} from '$lib/utils/graph';
 
@@ -13,9 +14,9 @@
 </script>
 
 <div
-  class="absolute pointer-events-auto select-none group rounded-md flex flex-col items-center justify-center text-center p-3 transition-colors duration-75
+  class="absolute pointer-events-auto select-none group flex flex-col items-center justify-center text-center p-3 transition-colors duration-75 dialog-board
         {isDragTarget ? 'z-[100] scale-105' : 'z-20'}
-        {activeNodeId === node.id ? 'ring-4 ring-blue-400' : 'hover:scale-105'}"
+        {activeNodeId === node.id ? 'ring-4 ring-[color:var(--pa-gold-light)]' : 'hover:scale-105'}"
   style="
         left: {node.x}px; 
         top: {node.y}px; 
@@ -34,22 +35,31 @@
     }
   }}
 >
-  {#if node.isInferred}
-    <div
-      class="absolute top-2 left-2 flex items-center gap-1 text-[9px] text-slate-400 uppercase font-bold tracking-widest px-1 rounded"
-    >
-      <BrainCircuit size={10} />
+  <div class="absolute top-2 left-2 w-3 h-3 bg-[color:var(--pa-wood-dark)] border-2 border-[color:var(--pa-bark)]"></div>
+  <div class="absolute top-2 right-2 w-3 h-3 bg-[color:var(--pa-wood-dark)] border-2 border-[color:var(--pa-bark)]"></div>
+
+  {#if node.cluster}
+    <div class="absolute -top-2 left-1/2 -translate-x-1/2 inventory-slot min-h-0 px-2 py-1 text-[10px] tracking-[0.18em] max-w-[80%] truncate">
+      {node.cluster}
     </div>
   {/if}
 
-  <div class="font-['HuiwenMincho'] text-lg leading-5 font-bold text-gray-400 break-words line-clamp-3 w-full">
+  {#if node.isInferred}
+    <div
+      class="absolute top-2 left-2 flex items-center gap-1 text-[9px] text-[color:var(--pa-water-bottom)] uppercase font-bold tracking-widest px-1 rounded"
+    >
+      <PixelIcon size={10} pixels={iconBrain} />
+    </div>
+  {/if}
+
+  <div class="font-pixel-ui text-sm leading-5 font-bold text-[color:var(--pa-bark)] break-words line-clamp-3 w-full tracking-wide px-1">
     {node.title}
   </div>
 
   {#if node.page !== null}
     {@const page = node.page}
     <button
-      class="absolute bottom-2 right-2 text-xs font-mono text-gray-400 bg-white/50 px-1 rounded border border-transparent hover:text-yellow-400 transition-colors"
+      class="absolute bottom-2 right-2 farm-badge text-[11px]"
       title={$t('knowledge_board.jump_to_page', {values: {page}})}
       on:click|stopPropagation={() => dispatch('jump', page)}
     >

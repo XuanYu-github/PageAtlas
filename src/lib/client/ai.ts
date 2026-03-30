@@ -2,24 +2,77 @@ import {GoogleGenerativeAI} from '@google/generative-ai';
 import OpenAI from 'openai';
 import {jsonrepair} from 'jsonrepair';
 
+import {
+  normalizeOpenAIReasoningEffort,
+  type BrowserAiConfig,
+  type BrowserVisionMessage,
+  type OpenAIReasoningEffort,
+} from '$lib/client/ai-config';
 import {SYSTEM_PROMPT_GRAPH, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION, normalizeToc} from '$lib/utils/toc';
 import type {AiTocItem} from '$lib/utils/toc';
 
 export type BrowserAiProvider = 'gemini' | 'qwen' | 'zhipu' | 'doubao' | 'openai';
 
-export interface BrowserAiConfig {
-  provider?: string;
-  apiKey?: string;
-  doubaoEndpointIdText?: string;
-  doubaoEndpointIdVision?: string;
-  openaiBaseUrl?: string;
-  openaiModelText?: string;
-  openaiModelVision?: string;
+type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
+
+type OpenAICompatibleChatRequest = {
+  model: string;
+  messages: unknown[];
+  stream?: boolean;
+  max_tokens?: number;
+  reasoning_effort?: Exclude<OpenAIReasoningEffort, 'none'>;
+};
+
+export type BrowserAiConnectionErrorCode =
+  | 'api_key_missing'
+  | 'model_missing'
+  | 'model_not_found'
+  | 'base_url_invalid'
+  | 'network_unreachable'
+  | 'cors_models_blocked'
+  | 'cors_chat_blocked'
+  | 'network_or_cors'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'rate_limited'
+  | 'unknown';
+
+export class BrowserAiConnectionError extends Error {
+  code: BrowserAiConnectionErrorCode;
+  provider: BrowserAiProvider;
+  status?: number;
+  detail?: string;
+
+  constructor(options: {
+    code: BrowserAiConnectionErrorCode;
+    provider: BrowserAiProvider;
+    message: string;
+    status?: number;
+    detail?: string;
+  }) {
+    super(options.message);
+    this.name = 'BrowserAiConnectionError';
+    this.code = options.code;
+    this.provider = options.provider;
+    this.status = options.status;
+    this.detail = options.detail;
+  }
 }
 
-export interface BrowserVisionMessage {
-  imageDataUrl: string;
-  page: number;
+export type BrowserAiConnectionStageKey = 'models' | 'chat' | 'generate';
+
+export interface BrowserAiConnectionDiagnosticStage {
+  key: BrowserAiConnectionStageKey;
+  endpoint: string;
+  status: 'success' | 'error' | 'skipped';
+  error?: BrowserAiConnectionError;
+}
+
+export interface BrowserAiConnectionDiagnostic {
+  provider: BrowserAiProvider;
+  ok: boolean;
+  stages: BrowserAiConnectionDiagnosticStage[];
 }
 
 function resolveProvider(provider?: string): BrowserAiProvider {
@@ -28,6 +81,14 @@ function resolveProvider(provider?: string): BrowserAiProvider {
   }
 
   return 'gemini';
+}
+
+async function getTauriInvoke(): Promise<TauriInvoke | null> {
+  if (typeof window === 'undefined') return null;
+  if (!('__TAURI_INTERNALS__' in window)) return null;
+
+  const {invoke} = await import('@tauri-apps/api/core');
+  return invoke as TauriInvoke;
 }
 
 function normalizeMessageContent(content: unknown): string {
@@ -129,7 +190,11 @@ function resolveOpenAICompatibleSettings(provider: BrowserAiProvider, config: Br
   if (provider === 'doubao') {
     const model = isVision ? config.doubaoEndpointIdVision : config.doubaoEndpointIdText;
     if (!model) {
-      throw new Error(`[Doubao] ${isVision ? 'Vision' : 'Text'} model is missing.`);
+      throw new BrowserAiConnectionError({
+        code: 'model_missing',
+        provider,
+        message: `[Doubao] ${isVision ? 'Vision' : 'Text'} model is missing.`,
+      });
     }
 
     return {
@@ -144,14 +209,371 @@ function resolveOpenAICompatibleSettings(provider: BrowserAiProvider, config: Br
     : config.openaiModelText?.trim();
 
   if (!model) {
-    throw new Error(`[OpenAI Compatible] ${isVision ? 'Vision' : 'Text'} model is missing.`);
+    throw new BrowserAiConnectionError({
+      code: 'model_missing',
+      provider,
+      message: `[OpenAI Compatible] ${isVision ? 'Vision' : 'Text'} model is missing.`,
+    });
+  }
+
+  const baseURL = config.openaiBaseUrl?.trim() || undefined;
+  if (baseURL) {
+    try {
+      new URL(baseURL);
+    } catch {
+      throw new BrowserAiConnectionError({
+        code: 'base_url_invalid',
+        provider,
+        message: '[OpenAI Compatible] Base URL is invalid.',
+      });
+    }
   }
 
   return {
     apiKey,
-    baseURL: config.openaiBaseUrl?.trim() || undefined,
+    baseURL,
     model,
   };
+}
+
+function resolveOpenAIReasoningEffort(
+  provider: BrowserAiProvider,
+  config: BrowserAiConfig
+): Exclude<OpenAIReasoningEffort, 'none'> | undefined {
+  if (provider !== 'openai') return undefined;
+
+  const effort = normalizeOpenAIReasoningEffort(config.openaiReasoningEffort);
+  return effort === 'none' ? undefined : effort;
+}
+
+function createOpenAICompatibleChatRequest(options: {
+  provider: BrowserAiProvider;
+  model: string;
+  messages: unknown[];
+  config: BrowserAiConfig;
+  maxTokens?: number;
+}): OpenAICompatibleChatRequest {
+  const reasoningEffort = resolveOpenAIReasoningEffort(options.provider, options.config);
+
+  return {
+    model: options.model,
+    messages: options.messages,
+    stream: false,
+    ...(typeof options.maxTokens === 'number' ? {max_tokens: options.maxTokens} : {}),
+    ...(reasoningEffort ? {reasoning_effort: reasoningEffort} : {}),
+  };
+}
+
+function normalizeUnknownErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+async function canReachOriginWithoutCors(baseURL?: string): Promise<boolean> {
+  if (!baseURL) return false;
+
+  try {
+    const url = new URL(baseURL);
+    await fetch(url.origin, {
+      method: 'GET',
+      mode: 'no-cors',
+      cache: 'no-store',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function classifyConnectionError(
+  provider: BrowserAiProvider,
+  error: unknown
+): BrowserAiConnectionError {
+  if (error instanceof BrowserAiConnectionError) {
+    return error;
+  }
+
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? Number((error as {status?: unknown}).status)
+    : undefined;
+  const message = normalizeUnknownErrorMessage(error);
+  const lowered = message.toLowerCase();
+
+  if (lowered.includes('api key is missing')) {
+    return new BrowserAiConnectionError({
+      code: 'api_key_missing',
+      provider,
+      message,
+    });
+  }
+
+  if (lowered.includes('model is missing')) {
+    return new BrowserAiConnectionError({
+      code: 'model_missing',
+      provider,
+      message,
+    });
+  }
+
+  if (lowered.includes('model "') && lowered.includes('was not found')) {
+    return new BrowserAiConnectionError({
+      code: 'model_not_found',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  if (lowered.includes('base url is invalid') || lowered.includes('invalid url')) {
+    return new BrowserAiConnectionError({
+      code: 'base_url_invalid',
+      provider,
+      message,
+    });
+  }
+
+  if (status === 401) {
+    return new BrowserAiConnectionError({
+      code: 'unauthorized',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  if (status === 403) {
+    return new BrowserAiConnectionError({
+      code: 'forbidden',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  if (status === 404) {
+    return new BrowserAiConnectionError({
+      code: 'not_found',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  if (status === 429) {
+    return new BrowserAiConnectionError({
+      code: 'rate_limited',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  if (
+    lowered.includes('connection error') ||
+    lowered.includes('failed to fetch') ||
+    lowered.includes('fetch failed') ||
+    lowered.includes('networkerror') ||
+    lowered.includes('load failed') ||
+    lowered.includes('cors')
+  ) {
+    return new BrowserAiConnectionError({
+      code: 'network_or_cors',
+      provider,
+      status,
+      message,
+    });
+  }
+
+  return new BrowserAiConnectionError({
+    code: 'unknown',
+    provider,
+    status,
+    message,
+  });
+}
+
+async function testOpenAICompatibleModelsEndpoint(config: BrowserAiConfig): Promise<{
+  provider: BrowserAiProvider;
+  model: string;
+}> {
+  const provider = resolveProvider(config.provider);
+  const {apiKey, baseURL, model} = resolveOpenAICompatibleSettings(provider, config, false);
+  const modelsUrl = `${(baseURL || '').replace(/\/$/, '')}/models`;
+
+  try {
+    const response = await fetch(modelsUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 401) {
+      throw new BrowserAiConnectionError({
+        code: 'unauthorized',
+        provider,
+        status: 401,
+        message: '401 Unauthorized',
+      });
+    }
+
+    if (response.status === 403) {
+      throw new BrowserAiConnectionError({
+        code: 'forbidden',
+        provider,
+        status: 403,
+        message: '403 Forbidden',
+      });
+    }
+
+    if (response.status === 404) {
+      throw new BrowserAiConnectionError({
+        code: 'not_found',
+        provider,
+        status: 404,
+        message: '404 Not Found',
+      });
+    }
+
+    if (response.status === 429) {
+      throw new BrowserAiConnectionError({
+        code: 'rate_limited',
+        provider,
+        status: 429,
+        message: '429 Too Many Requests',
+      });
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new BrowserAiConnectionError({
+        code: 'unknown',
+        provider,
+        status: response.status,
+        message: text || `${response.status} ${response.statusText}`,
+      });
+    }
+
+    const payload = await response.json().catch(() => null) as {data?: Array<{id?: string}>} | null;
+    const modelIds = payload?.data?.map((item) => item.id).filter((id): id is string => typeof id === 'string') || [];
+
+    if (modelIds.length > 0 && !modelIds.includes(model)) {
+      throw new BrowserAiConnectionError({
+        code: 'model_not_found',
+        provider,
+        status: 404,
+        message: `Model "${model}" was not found in /models.`,
+        detail: model,
+      });
+    }
+
+    return {provider, model};
+  } catch (error) {
+    const classified = classifyConnectionError(provider, error);
+
+    if (classified.code === 'network_or_cors') {
+      const originReachable = await canReachOriginWithoutCors(baseURL);
+      throw new BrowserAiConnectionError({
+        code: originReachable ? 'cors_models_blocked' : 'network_unreachable',
+        provider,
+        message: classified.message,
+        detail: modelsUrl,
+      });
+    }
+
+    throw classified;
+  }
+}
+
+async function testOpenAICompatibleChatEndpoint(config: BrowserAiConfig): Promise<{
+  provider: BrowserAiProvider;
+  model: string;
+}> {
+  const provider = resolveProvider(config.provider);
+  const {apiKey, baseURL, model} = resolveOpenAICompatibleSettings(provider, config, false);
+  const chatUrl = `${(baseURL || '').replace(/\/$/, '')}/chat/completions`;
+
+  try {
+    const response = await fetch(chatUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(createOpenAICompatibleChatRequest({
+        provider,
+        model,
+        messages: [{role: 'user', content: 'Reply with exactly: OK'}],
+        config,
+        maxTokens: 1,
+      })),
+    });
+
+    if (response.status === 401) {
+      throw new BrowserAiConnectionError({
+        code: 'unauthorized',
+        provider,
+        status: 401,
+        message: '401 Unauthorized',
+      });
+    }
+
+    if (response.status === 403) {
+      throw new BrowserAiConnectionError({
+        code: 'forbidden',
+        provider,
+        status: 403,
+        message: '403 Forbidden',
+      });
+    }
+
+    if (response.status === 404) {
+      throw new BrowserAiConnectionError({
+        code: 'not_found',
+        provider,
+        status: 404,
+        message: '404 Not Found',
+      });
+    }
+
+    if (response.status === 429) {
+      throw new BrowserAiConnectionError({
+        code: 'rate_limited',
+        provider,
+        status: 429,
+        message: '429 Too Many Requests',
+      });
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new BrowserAiConnectionError({
+        code: 'unknown',
+        provider,
+        status: response.status,
+        message: text || `${response.status} ${response.statusText}`,
+      });
+    }
+
+    return {provider, model};
+  } catch (error) {
+    const classified = classifyConnectionError(provider, error);
+
+    if (classified.code === 'network_or_cors') {
+      throw new BrowserAiConnectionError({
+        code: 'cors_chat_blocked',
+        provider,
+        message: classified.message,
+        detail: chatUrl,
+      });
+    }
+
+    throw classified;
+  }
 }
 
 async function generateOpenAICompatibleText(
@@ -162,13 +584,18 @@ async function generateOpenAICompatibleText(
 ): Promise<string> {
   const {apiKey, baseURL, model} = resolveOpenAICompatibleSettings(provider, config, false);
   const client = createBrowserOpenAIClient(apiKey, baseURL);
-  const response = await client.chat.completions.create({
+  const request = createOpenAICompatibleChatRequest({
+    provider,
     model,
+    config,
     messages: [
       ...(systemPrompt ? [{role: 'system' as const, content: systemPrompt}] : []),
       {role: 'user' as const, content: prompt},
     ],
   });
+  const response = await client.chat.completions.create(
+    request as unknown as Parameters<typeof client.chat.completions.create>[0]
+  ) as Awaited<ReturnType<typeof client.chat.completions.create>> & {choices: Array<{message?: {content?: unknown}}>};
 
   return normalizeMessageContent(response.choices[0]?.message?.content);
 }
@@ -185,15 +612,20 @@ async function generateOpenAICompatibleVision(
   const content = [
     {type: 'text', text: prompt},
     ...images.map(({imageDataUrl}) => ({type: 'image_url', image_url: {url: imageDataUrl}})),
-  ] as any;
+  ];
 
-  const response = await client.chat.completions.create({
+  const request = createOpenAICompatibleChatRequest({
+    provider,
     model,
+    config,
     messages: [
       {role: 'system', content: systemPrompt},
       {role: 'user', content},
     ],
   });
+  const response = await client.chat.completions.create(
+    request as unknown as Parameters<typeof client.chat.completions.create>[0]
+  ) as Awaited<ReturnType<typeof client.chat.completions.create>> & {choices: Array<{message?: {content?: unknown}}>};
 
   return normalizeMessageContent(response.choices[0]?.message?.content);
 }
@@ -206,8 +638,27 @@ export async function generateTextInBrowser(
   const provider = resolveProvider(config.provider);
   const apiKey = config.apiKey?.trim() || '';
 
+  if (provider !== 'gemini') {
+    const invoke = await getTauriInvoke();
+    if (invoke) {
+      const result = await invoke<{provider: string; text: string}>('invoke_openai_compatible_text', {
+        provider,
+        prompt,
+        systemPrompt,
+        config,
+      });
+      return {provider, text: result.text};
+    }
+  }
+
   if (provider === 'gemini') {
-    if (!apiKey) throw new Error('[Gemini] API Key is missing.');
+    if (!apiKey) {
+      throw new BrowserAiConnectionError({
+        code: 'api_key_missing',
+        provider,
+        message: '[Gemini] API Key is missing.',
+      });
+    }
     return {provider, text: await generateWithGeminiText(prompt, systemPrompt, apiKey)};
   }
 
@@ -223,8 +674,28 @@ export async function generateVisionInBrowser(
   const provider = resolveProvider(config.provider);
   const apiKey = config.apiKey?.trim() || '';
 
+  if (provider !== 'gemini') {
+    const invoke = await getTauriInvoke();
+    if (invoke) {
+      const result = await invoke<{provider: string; text: string}>('invoke_openai_compatible_vision', {
+        provider,
+        prompt,
+        systemPrompt,
+        images,
+        config,
+      });
+      return {provider, text: result.text};
+    }
+  }
+
   if (provider === 'gemini') {
-    if (!apiKey) throw new Error('[Gemini] API Key is missing.');
+    if (!apiKey) {
+      throw new BrowserAiConnectionError({
+        code: 'api_key_missing',
+        provider,
+        message: '[Gemini] API Key is missing.',
+      });
+    }
     return {provider, text: await generateWithGeminiVision(prompt, systemPrompt, images, apiKey)};
   }
 
@@ -311,4 +782,109 @@ ${options.textContext ? `Context:\n${options.textContext}` : 'Some source pages 
       : options.citations.slice(0, 1),
     provider: result.provider,
   };
+}
+
+export async function testBrowserAiConnection(config: BrowserAiConfig): Promise<{
+  provider: BrowserAiProvider;
+  text: string;
+}> {
+  const diagnostic = await diagnoseBrowserAiConnection(config);
+  if (!diagnostic.ok) {
+    const firstError = diagnostic.stages.find((stage) => stage.status === 'error')?.error;
+    throw firstError || new BrowserAiConnectionError({
+      code: 'unknown',
+      provider: diagnostic.provider,
+      message: 'Connection test failed.',
+    });
+  }
+
+  return {
+    provider: diagnostic.provider,
+    text: 'OK',
+  };
+}
+
+export async function diagnoseBrowserAiConnection(
+  config: BrowserAiConfig
+): Promise<BrowserAiConnectionDiagnostic> {
+  const provider = resolveProvider(config.provider);
+
+  if (provider !== 'gemini') {
+    const invoke = await getTauriInvoke();
+    if (invoke) {
+      return await invoke<BrowserAiConnectionDiagnostic>('diagnose_ai_connection', {config});
+    }
+  }
+
+  if (provider === 'openai') {
+    try {
+      const result = await testOpenAICompatibleModelsEndpoint(config);
+
+      try {
+        await testOpenAICompatibleChatEndpoint(config);
+        return {
+          provider: result.provider,
+          ok: true,
+          stages: [
+            {key: 'models', endpoint: 'GET /models', status: 'success'},
+            {key: 'chat', endpoint: 'POST /chat/completions', status: 'success'},
+          ],
+        };
+      } catch (error) {
+        const classified = classifyConnectionError(provider, error);
+        return {
+          provider,
+          ok: false,
+          stages: [
+            {key: 'models', endpoint: 'GET /models', status: 'success'},
+            {key: 'chat', endpoint: 'POST /chat/completions', status: 'error', error: classified},
+          ],
+        };
+      }
+    } catch (error) {
+      const classified = classifyConnectionError(provider, error);
+      return {
+        provider,
+        ok: false,
+        stages: [
+          {key: 'models', endpoint: 'GET /models', status: 'error', error: classified},
+          {key: 'chat', endpoint: 'POST /chat/completions', status: 'skipped'},
+        ],
+      };
+    }
+  }
+
+  try {
+    const result = await generateTextInBrowser(
+      'Reply with exactly: OK',
+      'You are a connection test endpoint. Reply with exactly OK.',
+      config,
+    );
+
+    const text = result.text.trim();
+    if (!text) {
+      throw new BrowserAiConnectionError({
+        code: 'unknown',
+        provider,
+        message: 'The provider returned an empty response.',
+      });
+    }
+
+    return {
+      provider: result.provider,
+      ok: true,
+      stages: [
+        {key: 'generate', endpoint: 'Text generation', status: 'success'},
+      ],
+    };
+  } catch (error) {
+    const classified = classifyConnectionError(provider, error);
+    return {
+      provider,
+      ok: false,
+      stages: [
+        {key: 'generate', endpoint: 'Text generation', status: 'error', error: classified},
+      ],
+    };
+  }
 }

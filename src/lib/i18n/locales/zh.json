@@ -1,4 +1,28 @@
 {
+  "meta": {
+    "title": "PageAtlas · AI PDF ToC、问答与知识看板",
+    "description": "面向 PDF 目录生成、分页与章节问答、扫描页多模态阅读、知识图谱整理的开源浏览器工作台。"
+  },
+  "header": {
+    "subtitle": "整理目录、提问页面，并把整份文档映射成清晰可探索的知识界面。",
+    "help": "使用说明",
+    "github": "查看 GitHub",
+    "github_aria": "在 GitHub 中查看项目"
+  },
+  "shell": {
+    "workbench": "目录工位",
+    "reading_desk": "阅读工位",
+    "graph_entry": "图谱",
+    "graph_title": "打开知识图谱",
+    "api_entry": "API设置",
+    "qa_short": "问答",
+    "toc_short": "目录",
+    "background_only": "只显示背景",
+    "restore_workspace": "恢复工作区"
+  },
+  "footer": {
+    "log": "季节日志"
+  },
   "settings": {
     "title": "目录设置",
     "toggle_expand": "展开 / 折叠切换",
@@ -37,6 +61,50 @@
     "openai_preset_default_applied": "已套用默认预设。",
     "openai_preset_imported": "已导入 {count} 个预设。",
     "openai_preset_import_failed": "导入预设失败。",
+    "test_connection": "测试连接",
+    "testing_connection": "测试中...",
+    "connection_success": "已通过 {provider} 连接成功。",
+    "connection_failed": "连接失败：{message}",
+    "connection_verified": "已验证",
+    "error_api_key_missing": "缺少 API Key。",
+    "error_model_missing": "缺少可用模型配置。",
+    "error_model_not_found": "当前接口上找不到你配置的模型。",
+    "error_base_url_invalid": "Base URL 无效，请输入完整链接。",
+    "error_network_unreachable": "浏览器完全无法连到这个接口主机。请检查 DNS、HTTPS 证书、代理或本地网络限制。",
+    "error_cors_models_blocked": "接口主机可达，但 GET /models 没有返回可被浏览器读取的响应，通常说明浏览器 CORS 或预检被拦截。",
+    "error_cors_chat_blocked": "GET /models 已成功，但 POST /chat/completions 没有返回可被浏览器读取的响应，通常说明聊天接口的浏览器 CORS 或预检被拦截。",
+    "error_network_or_cors": "浏览器没有拿到 HTTP 响应，通常是 CORS 或网络限制。如果同一接口在桌面软件可用、但浏览器中不可用，往往是供应商没有开放浏览器跨域。",
+    "error_unauthorized": "认证失败（401），请检查 API Key 是否正确。",
+    "error_forbidden": "访问被拒绝（403），当前密钥或账号没有权限。",
+    "error_not_found": "接口或模型不存在（404），请检查 Base URL 与模型 / Endpoint ID。",
+    "error_rate_limited": "请求频率受限（429），请稍后再试或更换凭证。",
+    "error_unknown": "未知连接错误。",
+    "connection_stage_models": "模型列表",
+    "connection_stage_chat": "聊天补全",
+    "connection_stage_generate": "文本生成",
+    "connection_stage_success": "成功",
+    "connection_stage_failed": "失败",
+    "connection_stage_skipped": "未执行",
+    "connection_stage_models_success": "GET /models 已成功返回。",
+    "connection_stage_chat_success": "POST /chat/completions 已成功返回。",
+    "connection_stage_generate_success": "最小文本请求已成功完成。",
+    "llm_provider": "LLM 提供方",
+    "provider_auto": "自动",
+    "provider_openai_compatible": "OpenAI 兼容接口",
+    "base_url": "Base URL",
+    "text_model": "文本模型",
+    "vision_model_optional": "视觉模型（可选）",
+    "reasoning_effort": "思考强度",
+    "reasoning_effort_hint": "部分 OpenAI 兼容网关会用它控制思考深度；选择“无”时不会附带这个参数。",
+    "reasoning_effort_none": "无",
+    "reasoning_effort_low": "低",
+    "reasoning_effort_medium": "中",
+    "reasoning_effort_high": "高",
+    "reasoning_effort_xhigh": "超高（xhigh）",
+    "endpoint_id_text": "Endpoint ID（文本 / Lite）",
+    "endpoint_id_vision": "Endpoint ID（视觉 / Pro）",
+    "key_label": "API Key",
+    "learn_page_labels": "了解 PDF 分段页码",
     "add_numbering": "添加编号",
     "style": "样式",
     "none": "无",
@@ -83,6 +151,7 @@
     "generate_toc_ai": "从所选页面生成目录",
     "generating": "正在生成...",
     "go": "跳转",
+    "add_chapter": "添加新章节",
     "add_section": "添加新章节",
     "upload_new": "上传新文件",
     "loading": "加载中...",
@@ -94,6 +163,43 @@
     "save": "保存",
     "saved": "已保存",
     "close_hint": "关闭提示"
+  },
+  "viewer": {
+    "no_file": "未命名 PDF",
+    "page_marker": "页",
+    "scroll_marker": "滚动",
+    "read_mode_menu": "阅读模式",
+    "read_mode_single": "单页",
+    "read_mode_single_continuous": "单页连续",
+    "read_mode_two_page": "双页",
+    "read_mode_two_page_continuous": "双页连续",
+    "fit_actual_size": "实际大小",
+    "fit_page": "适合页面",
+    "fit_width": "适合宽度",
+    "fit_viewport": "适合视区"
+  },
+  "help_modal": {
+    "title": "如何使用 PageAtlas",
+    "feedback": "反馈",
+    "copy_email": "点击复制邮箱",
+    "copied": "已复制！",
+    "close": "关闭帮助弹窗",
+    "close_button": "关闭弹窗"
+  },
+  "update_modal": {
+    "title": "发现新版本",
+    "available": "v{version} 已可更新！",
+    "failed": "更新失败：",
+    "whats_new": "更新内容：",
+    "default_body": "包含若干问题修复与性能优化。",
+    "later": "稍后再说",
+    "installing": "安装中...",
+    "update_now": "立即更新",
+    "close": "关闭更新弹窗"
+  },
+  "about": {
+    "back_to_tool": "返回工具页",
+    "kicker": "工具手册"
   },
   "status": {
     "loading_rendering": "正在加载 PDF...",
@@ -178,8 +284,14 @@
     "range_start": "起始页",
     "range_end": "结束页",
     "question_placeholder": "可以问这一页讲了什么、结论是什么、或者这几页证明了什么...",
+    "upload_image": "上传图片",
+    "paste_image_hint": "也可以使用 Ctrl/Cmd + V 粘贴图片。",
     "ask": "提问 PDF",
     "asking": "正在提问...",
+    "editing_message": "正在编辑这条提问。",
+    "cancel_edit": "取消编辑",
+    "edit_message": "编辑",
+    "copy_message": "复制",
     "messages_empty": "带页码引用的回答会显示在这里。",
     "source_pages": "引用页码",
     "jump_to_page": "第 {page} 页",
@@ -223,6 +335,7 @@
   "star_request": {
     "title": "喜欢 PageAtlas 吗？",
     "body": "如果这个工具对你有帮助，请考虑在 GitHub 上给我们一个 star，或者分享你的反馈建议！",
+    "notice": "节日告示",
     "btn_star": "去 GitHub 给 Star",
     "btn_feedback": "反馈建议",
     "btn_maybe_later": "以后再说",
@@ -230,6 +343,7 @@
   },
   "knowledge_board": {
     "title": "知识看板",
+    "beta_badge": "测试中",
     "btn_investigate": "探索",
     "btn_connecting": "正在连接...",
     "msg_generate_toc": "生成目录以开始...",
@@ -240,6 +354,12 @@
     "beta": "现在是 beta，或许永远是 beta",
     "hide_graph": "隐藏入口",
     "export_graph": "导出知识看板"
+  },
+  "tooltip_common": {
+    "copied": "已复制！"
+  },
+  "common": {
+    "close": "关闭"
   },
   "error": {
     "no_page_ranges": "请选择目录页面范围",

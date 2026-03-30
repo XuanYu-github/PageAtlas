@@ -4,52 +4,52 @@
   import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import Footer from '../../components/Footer.svelte';
   import SeoJsonLd from '../../components/SeoJsonLd.svelte';
-  import { ArrowLeft } from 'lucide-svelte';
+  import PixelIcon from '../../components/icons/PixelIcon.svelte';
+  import {iconArrowLeft} from '../../components/icons';
 
   let ready = false;
   onMount(() => {
     ready = true;
   });
 
-  const cardClass = "relative bg-white border-2 border-black rounded-xl p-6 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] transition-all duration-200";
+  const cardClass = 'panel-paper pixel-reading-surface p-6 transition-transform duration-200 hover:translate-y-1';
 </script>
 
 <SeoJsonLd title={$t('seo.why_title')} description={$t('seo.why_desc')} />
 
-<div class="min-h-screen flex font-['HuiwenMincho'] text-neutral-800 flex-col bg-yellow-50 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px]">
+<div class="min-h-screen flex text-neutral-800 flex-col">
   
-  <div class="container mx-auto px-4 py-12 flex-1 max-w-4xl">
+  <div class="container mx-auto px-4 py-10 md:py-14 flex-1 max-w-5xl">
     
     {#if ready}
       <div 
         in:fly={{ y: 20, duration: 600, delay: 0, easing: cubicOut }} 
         class="mb-16"
       >
-         <a href={base || '/'} class="group inline-flex items-center gap-2 px-5 py-2 border-2 border-black bg-white rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] active:scale-95 transition-all font-bold mb-10 text-sm uppercase tracking-wider">
-           <ArrowLeft size={16} class="group-hover:-translate-x-1 transition-transform"/>
-           Back to Tool
-         </a>
+         <a href={base || '/'} class="btn farm-btn-secondary group mb-10 text-sm uppercase tracking-wider">
+            <PixelIcon size={16} pixels={iconArrowLeft} class="group-hover:-translate-x-1 transition-transform"/>
+            {$t('about.back_to_tool')}
+          </a>
 
-         <h1 class="text-3xl md:text-5xl mb-8 leading-tight tracking-tight text-gray-900">
-           {$t('seo.why_title')}
-         </h1>
-         
-         <div class="relative">
-           <div class="absolute inset-0 bg-yellow-200 border-2 border-black rounded-2xl transform translate-x-2 translate-y-2 -z-10"></div>
-           <p class="text-lg md:text-xl font-medium leading-relaxed border-2 border-black bg-white p-6 md:p-8 rounded-2xl">
-             {$t('seo.why_desc')}
+         <div class="hero-farm p-6 md:p-8">
+           <div class="farm-kicker mb-3">{$t('about.kicker')}</div>
+           <h1 class="text-3xl md:text-5xl mb-6 leading-tight tracking-tight text-gray-900">
+            {$t('seo.why_title')}
+           </h1>
+          
+           <p class="text-lg md:text-xl font-medium leading-relaxed panel-paper pixel-reading-surface p-6 md:p-8">
+              {$t('seo.why_desc')}
            </p>
          </div>
-      </div>
+       </div>
 
       <section class="mb-20">
         <h2 
           in:fly={{ y: 20, duration: 600, delay: 100 }}
           class="text-2xl md:text-3xl font-bold mb-10 flex items-center gap-3"
         >
-          <span class="bg-neutral-800 text-white w-8 h-8 flex items-center justify-center rounded-lg text-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">#</span>
+          <span class="farm-badge">#</span>
           {$t('seo.features_title')}
         </h2>
         
@@ -75,13 +75,13 @@
           in:fly={{ y: 20, duration: 600, delay: 500 }}
           class="text-2xl md:text-3xl font-bold mb-10 flex items-center gap-3"
         >
-          <span class="bg-black text-white w-8 h-8 flex items-center justify-center rounded-lg text-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">?</span>
+          <span class="farm-badge">?</span>
           {$t('seo.how_title')}
         </h2>
         
         <div 
           in:fly={{ y: 20, duration: 600, delay: 600 }}
-          class="bg-white border-2 border-black rounded-2xl p-6 md:p-10 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+          class="panel-paper pixel-reading-surface p-6 md:p-10"
         >
           <div class="space-y-3 relative">
             <div class="absolute left-[15px] top-4 bottom-4 w-0.5 border-l-2 border-dashed border-gray-300 -z-10 hidden md:block"></div>
@@ -93,7 +93,7 @@
               $t('seo.how_step_4')
             ] as step, i}
               <div class="flex gap-6 items-start group">
-                <div class="bg-black text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ring-4 ring-white shadow-sm transition-transform group-hover:scale-110">
+                <div class="farm-badge w-10 h-10 !justify-center rounded-full transition-transform group-hover:scale-110">
                   {i + 1}
                 </div>
                 <div class="pt-0.5">
@@ -123,7 +123,7 @@
           ] as faq}
             <div 
               in:fly={{ y: 20, duration: 500, delay: faq.delay }}
-              class="bg-white border-2 border-neutral-800 rounded-xl p-6 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all duration-200"
+              class="panel-paper pixel-reading-surface p-6 hover:-translate-y-0.5 transition-all duration-200"
             >
               <h3 class="text-lg font-bold mb-3 flex items-start gap-2">
                 <span class="text-blue-500">Q.</span> {faq.q}
@@ -135,6 +135,4 @@
       </section>
     {/if}
   </div>
-
-  <Footer />
 </div>

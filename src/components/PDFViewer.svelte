@@ -1,7 +1,8 @@
 <script lang="ts">
   import {createEventDispatcher, tick, onDestroy} from 'svelte';
-  import {ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, ListOrdered} from 'lucide-svelte';
   import {t} from 'svelte-i18n';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import {iconArrowLeft, iconArrowRight, iconChevronDown, iconGrip, iconList, iconMaximize, iconZoomIn, iconZoomOut} from './icons/index';
 
   import { pdfService, tocConfig } from '../stores';
   import { type PDFService, type PDFState, type TocItem } from '$lib/pdf/service';
@@ -21,14 +22,20 @@
   export let addPhysicalTocPage: boolean = false;
   export let currentTocPath: TocItem[] = [];
   export let prefetchPageNum: number = 0;
+  export let previewAnchorPage: number = 0;
 
   const dispatch = createEventDispatcher();
+
+  type PreviewReadMode = 'single' | 'single-continuous' | 'two-page' | 'two-page-continuous';
+  type FitMode = 'actual-size' | 'fit-page' | 'fit-width' | 'fit-viewport';
 
   let gridPages: {pageNum: number; canvasId: string}[] = [];
   let pdfServiceInstance: PDFService | null = null;
   let intersectionObserver: IntersectionObserver | null = null;
   let scrollContainer: HTMLElement;
   let canvasElement: HTMLCanvasElement;
+  let spreadPrimaryCanvas: HTMLCanvasElement;
+  let spreadSecondaryCanvas: HTMLCanvasElement;
 
   let canvasesToObserve: HTMLCanvasElement[] = [];
 
@@ -49,6 +56,21 @@
 
   let pageLabels: string[] | null = null;
   let lastPageLabelsInstance: any = null;
+  let previewReadMode: PreviewReadMode = 'single-continuous';
+  let fitMode: FitMode = 'fit-page';
+  let showReadModeMenu = false;
+  let showFitModeMenu = false;
+  let basePageSize = { width: 0, height: 0 };
+  let scrollSyncFrameId: number | null = null;
+  let suppressScrollSync = false;
+  let syncingFromScroll = false;
+  let lastProgrammaticAnchorPage = 0;
+
+  const STANDARD_PADDING = 40;
+  const VIEWPORT_PADDING = 16;
+  const SPREAD_GAP = 24;
+  const previewReadModeOptions: PreviewReadMode[] = ['single', 'single-continuous', 'two-page', 'two-page-continuous'];
+  const fitModeOptions: FitMode[] = ['actual-size', 'fit-page', 'fit-width', 'fit-viewport'];
 
   let tocVersion = 0;
   $: if (tocPdfInstance) {
@@ -71,6 +93,13 @@
       intersectionObserver.disconnect();
       intersectionObserver = null;
     }
+    // Force the next mounted scroller to run initial anchor sync again.
+    // Without this, continuous preview can reuse an old container reference
+    // and incorrectly fall back to the first page.
+    // @ts-ignore intentional reset for remount flow
+    scrollContainer = undefined;
+    lastProgrammaticAnchorPage = 0;
+    suppressScrollSync = false;
     stopAutoScroll();
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -81,10 +110,23 @@
   onDestroy(() => {
     unsubscribePdfService();
     cleanupObservers();
+    if (scrollSyncFrameId) {
+      cancelAnimationFrame(scrollSyncFrameId);
+    }
   });
 
   $: ({filename, currentPage, scale, totalPages: stateTotalPages} = pdfState);
   $: activeTotalPages = stateTotalPages;
+  $: isGridMode = mode === 'grid';
+  $: isSinglePageMode = mode === 'single' && previewReadMode === 'single';
+  $: isSingleContinuousMode = mode === 'single' && previewReadMode === 'single-continuous';
+  $: isTwoPageMode = mode === 'single' && previewReadMode === 'two-page';
+  $: isTwoPageContinuousMode = mode === 'single' && previewReadMode === 'two-page-continuous';
+  $: visibleCurrentPage = isTwoPageMode || isTwoPageContinuousMode ? Math.max(1, currentPage % 2 === 0 ? currentPage - 1 : currentPage) : currentPage;
+  $: spreadSecondPage = (isTwoPageMode || isTwoPageContinuousMode) && visibleCurrentPage < activeTotalPages
+    ? visibleCurrentPage + 1
+    : null;
+  $: spreadStartPages = Array.from({length: Math.ceil(activeTotalPages / 2)}, (_, index) => index * 2 + 1);
 
   function getVirtualPageInfo(pageNum: number) {
     if (!tocPdfInstance || !addPhysicalTocPage) {
@@ -107,6 +149,200 @@
       return `toc-${tocVersion}-${localPageNum}`;
     }
     return `orig-${localPageNum}`;
+  }
+
+  function normalizeTargetPage(pageNum: number): number {
+    const clamped = Math.max(1, Math.min(pageNum, activeTotalPages || 1));
+    if (previewReadMode === 'two-page' || previewReadMode === 'two-page-continuous') {
+      return clamped % 2 === 0 ? clamped - 1 : clamped;
+    }
+    return clamped;
+  }
+
+  function getNavigationStep(): number {
+    return previewReadMode === 'two-page' || previewReadMode === 'two-page-continuous' ? 2 : 1;
+  }
+
+  function getFitBaseScale(totalWidth: number, totalHeight: number): number {
+    if (!containerWidth || !containerHeight || totalWidth <= 0 || totalHeight <= 0) {
+      return 1;
+    }
+
+    if (fitMode === 'actual-size') {
+      return 1;
+    }
+
+    if (fitMode === 'fit-width') {
+      return Math.max((containerWidth - STANDARD_PADDING) / totalWidth, 0.1);
+    }
+
+    const padding = fitMode === 'fit-viewport' ? VIEWPORT_PADDING : STANDARD_PADDING;
+    return Math.max(
+      Math.min((containerWidth - padding) / totalWidth, (containerHeight - padding) / totalHeight),
+      0.1,
+    );
+  }
+
+  function getPreviewReadModeLabel(modeValue: PreviewReadMode): string {
+    if (modeValue === 'single') return $t('viewer.read_mode_single');
+    if (modeValue === 'single-continuous') return $t('viewer.read_mode_single_continuous');
+    if (modeValue === 'two-page') return $t('viewer.read_mode_two_page');
+    return $t('viewer.read_mode_two_page_continuous');
+  }
+
+  function getFitModeLabel(modeValue: FitMode): string {
+    if (modeValue === 'actual-size') return $t('viewer.fit_actual_size');
+    if (modeValue === 'fit-width') return $t('viewer.fit_width');
+    if (modeValue === 'fit-viewport') return $t('viewer.fit_viewport');
+    return $t('viewer.fit_page');
+  }
+
+  async function setPreviewReadMode(nextMode: PreviewReadMode) {
+    previewReadMode = nextMode;
+    showReadModeMenu = false;
+    pdfState.currentPage = normalizeTargetPage(pdfState.currentPage || 1);
+    await tick();
+
+    if (nextMode === 'single') {
+      renderCurrentPage();
+      return;
+    }
+
+    if (nextMode === 'two-page') {
+      renderSpreadPages();
+      return;
+    }
+
+    scrollToPageAnchor(pdfState.currentPage || 1);
+  }
+
+  function setFitMode(nextMode: FitMode) {
+    fitMode = nextMode;
+    showFitModeMenu = false;
+    pdfState.scale = 1.0;
+  }
+
+  function toggleReadModeMenu() {
+    showReadModeMenu = !showReadModeMenu;
+    if (showReadModeMenu) {
+      showFitModeMenu = false;
+    }
+  }
+
+  function toggleFitModeMenu() {
+    showFitModeMenu = !showFitModeMenu;
+    if (showFitModeMenu) {
+      showReadModeMenu = false;
+    }
+  }
+
+  function closeMenus() {
+    showReadModeMenu = false;
+    showFitModeMenu = false;
+  }
+
+  function updateCurrentPageFromScroll() {
+    if (!scrollContainer || !(isSingleContinuousMode || isTwoPageContinuousMode)) return;
+
+    const anchors = Array.from(scrollContainer.querySelectorAll<HTMLElement>('[data-page-anchor]'));
+    if (anchors.length === 0) return;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const targetY = containerRect.top + (containerRect.height * 0.33);
+
+    let closestPage = currentPage || 1;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const anchor of anchors) {
+      const page = Number(anchor.dataset.pageAnchor);
+      if (!Number.isFinite(page)) continue;
+
+      const rect = anchor.getBoundingClientRect();
+      const distance = Math.abs(rect.top - targetY);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestPage = page;
+      }
+    }
+
+    const normalized = normalizeTargetPage(closestPage);
+    if (normalized !== (currentPage || 1)) {
+      syncingFromScroll = true;
+      pdfState.currentPage = normalized;
+      queueMicrotask(() => {
+        syncingFromScroll = false;
+      });
+    }
+  }
+
+  function handleContinuousScroll() {
+    if (suppressScrollSync) return;
+    if (scrollSyncFrameId) {
+      cancelAnimationFrame(scrollSyncFrameId);
+    }
+
+    scrollSyncFrameId = requestAnimationFrame(() => {
+      scrollSyncFrameId = null;
+      updateCurrentPageFromScroll();
+    });
+  }
+
+  async function primeContinuousPages(pageNum: number) {
+    if (!scrollContainer || !pdfServiceInstance) return;
+
+    await tick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const candidatePages = (previewReadMode === 'two-page-continuous'
+      ? [pageNum - 2, pageNum, pageNum + 1, pageNum + 2]
+      : [pageNum - 1, pageNum, pageNum + 1]
+    ).filter((candidate) => candidate >= 1 && candidate <= activeTotalPages);
+
+    for (const candidatePage of candidatePages) {
+      const canvas = scrollContainer.querySelector(`canvas[data-page-num="${candidatePage}"]`) as HTMLCanvasElement | null;
+      if (!canvas) continue;
+
+      const {instance, localPageNum} = getVirtualPageInfo(candidatePage);
+      if (!instance) continue;
+
+      const measuredWidth = canvas.clientWidth
+        || canvas.parentElement?.clientWidth
+        || Math.floor(canvas.getBoundingClientRect().width)
+        || Math.floor(canvas.parentElement?.getBoundingClientRect().width || 0);
+      const canvasWidth = Math.max(measuredWidth || 0, 140);
+
+      await pdfServiceInstance.renderPageToCanvas(instance, localPageNum, canvas, canvasWidth);
+    }
+  }
+
+  function scrollToPageAnchor(pageNum: number, smooth = false) {
+    if (!scrollContainer) return;
+
+    const targetPage = normalizeTargetPage(pageNum);
+    const anchor = scrollContainer.querySelector(`[data-page-anchor="${targetPage}"]`) as HTMLElement | null;
+    if (anchor) {
+      suppressScrollSync = true;
+      lastProgrammaticAnchorPage = targetPage;
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      const relativeTop = anchorRect.top - containerRect.top;
+      const nextScrollTop =
+        scrollContainer.scrollTop + relativeTop - scrollContainer.clientHeight / 2 + anchor.clientHeight / 2;
+
+      scrollContainer.scrollTo({
+        top: nextScrollTop,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+      window.setTimeout(() => {
+        suppressScrollSync = false;
+      }, smooth ? 260 : 80);
+
+      if (isSingleContinuousMode || isTwoPageContinuousMode) {
+        window.setTimeout(() => {
+          void primeContinuousPages(targetPage);
+        }, smooth ? 40 : 0);
+      }
+    }
   }
 
   $: currentPageLabel = (originalPdfInstance && $tocConfig.pageLabelSettings.enabled) 
@@ -132,6 +368,26 @@
     refreshPageLabels(originalPdfInstance);
   }
 
+  async function refreshBasePageSize() {
+    if (!originalPdfInstance) {
+      basePageSize = {width: 0, height: 0};
+      return;
+    }
+
+    try {
+      const firstPage = await originalPdfInstance.getPage(1);
+      const viewport = firstPage.getViewport({scale: 1.0});
+      basePageSize = {width: viewport.width, height: viewport.height};
+      firstPage.cleanup();
+    } catch (error) {
+      console.warn('Failed to inspect base page size:', error);
+    }
+  }
+
+  $: if (originalPdfInstance) {
+    refreshBasePageSize();
+  }
+
 
   $: if (originalPdfInstance && filename && filename !== loadedFilename) {
     loadedFilename = filename;
@@ -149,75 +405,120 @@
     cleanupObservers();
   }
 
-  async function renderCurrentPage() {
-    if (!originalPdfInstance || !currentPage || !scale || !canvasElement) return;
-    
-    const pageId = getPageId(currentPage);
-    const { instance, localPageNum } = getVirtualPageInfo(currentPage);
+  async function renderPageToCanvas(pageNum: number, targetCanvas: HTMLCanvasElement, displayScale: number, cacheSuffix: string) {
+    const {instance, localPageNum} = getVirtualPageInfo(pageNum);
     if (!instance) return;
 
     try {
       const page = await instance.getPage(localPageNum);
-      const viewportOrig = page.getViewport({ scale: 1.0 });
-
-      // Calculate relative fit scale
-      let baseFitScale = 1.0;
-      if (containerWidth > 0 && containerHeight > 0) {
-        baseFitScale = Math.min((containerWidth - 40) / viewportOrig.width, (containerHeight - 40) / viewportOrig.height);
-      }
-      
-      const displayScale = scale * baseFitScale;
       const viewport = page.getViewport({ scale: displayScale });
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const targetW = Math.floor(viewport.width * dpr);
       const targetH = Math.floor(viewport.height * dpr);
-
-      // Simple Redundancy Check: if page and canvas size haven't changed, skip
-      if (lastPageId === pageId && canvasElement.width === targetW && canvasElement.height === targetH) {
+      const pageId = `${getPageId(pageNum)}-${cacheSuffix}`;
+      const ctx = targetCanvas.getContext('2d', { alpha: false });
+      if (!ctx) {
         page.cleanup();
         return;
       }
 
-      const isNewPage = lastPageId !== pageId;
-      lastPageId = pageId;
-
-      const ctx = canvasElement.getContext('2d', { alpha: false });
-      if (ctx) {
-        canvasElement.width = targetW;
-        canvasElement.height = targetH;
-        canvasElement.style.width = `${Math.floor(viewport.width)}px`;
-        canvasElement.style.height = `${Math.floor(viewport.height)}px`;
-        if (isNewPage) {
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, targetW, targetH);
-        }
-      }
-
       const bitmap = await renderQueue.enqueue(pageId, instance, localPageNum, 0);
-      const ctxFinal = canvasElement.getContext('2d', { alpha: false });
-      if (!ctxFinal) return;
-
-      ctxFinal.clearRect(0, 0, targetW, targetH);
-      ctxFinal.drawImage(bitmap, 0, 0, targetW, targetH);
+      targetCanvas.width = targetW;
+      targetCanvas.height = targetH;
+      targetCanvas.style.width = `${Math.floor(viewport.width)}px`;
+      targetCanvas.style.height = `${Math.floor(viewport.height)}px`;
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(bitmap, 0, 0, targetW, targetH);
       page.cleanup();
     } catch (e: any) {
       if (e?.name !== 'RenderingCancelledException') console.error('Rendering error:', e);
     }
   }
 
-  $: if (mode === 'single' && originalPdfInstance && currentPage && scale && containerWidth && containerHeight && (tocPdfInstance || true)) {
+  async function renderCurrentPage() {
+    if (!originalPdfInstance || !currentPage || !scale || !canvasElement) return;
+
+    const {instance, localPageNum} = getVirtualPageInfo(currentPage);
+    if (!instance) return;
+
+    const page = await instance.getPage(localPageNum);
+    const viewportOrig = page.getViewport({scale: 1.0});
+    const baseFitScale = getFitBaseScale(viewportOrig.width, viewportOrig.height);
+    const displayScale = scale * baseFitScale;
+    const pageId = `${getPageId(currentPage)}-single-${fitMode}-${Math.round(scale * 100)}`;
+
+    const targetViewport = page.getViewport({scale: displayScale});
+    if (lastPageId === pageId && canvasElement.width === Math.floor(targetViewport.width * Math.min(window.devicePixelRatio || 1, 2)) && canvasElement.height === Math.floor(targetViewport.height * Math.min(window.devicePixelRatio || 1, 2))) {
+      page.cleanup();
+      return;
+    }
+
+    lastPageId = pageId;
+    page.cleanup();
+    await renderPageToCanvas(currentPage, canvasElement, displayScale, `single-${fitMode}-${Math.round(scale * 100)}`);
+  }
+
+  async function renderSpreadPages() {
+    if (!originalPdfInstance || !visibleCurrentPage || !spreadPrimaryCanvas || !scale) return;
+
+    const firstInfo = getVirtualPageInfo(visibleCurrentPage);
+    if (!firstInfo.instance) return;
+
+    const firstPage = await firstInfo.instance.getPage(firstInfo.localPageNum);
+    const firstViewport = firstPage.getViewport({scale: 1.0});
+
+    let secondViewport = null;
+    if (spreadSecondPage) {
+      const secondInfo = getVirtualPageInfo(spreadSecondPage);
+      if (secondInfo.instance) {
+        const secondPage = await secondInfo.instance.getPage(secondInfo.localPageNum);
+        secondViewport = secondPage.getViewport({scale: 1.0});
+        secondPage.cleanup();
+      }
+    }
+
+    const totalWidth = firstViewport.width + (secondViewport ? SPREAD_GAP + secondViewport.width : 0);
+    const totalHeight = Math.max(firstViewport.height, secondViewport?.height || 0);
+    const displayScale = scale * getFitBaseScale(totalWidth, totalHeight);
+
+    firstPage.cleanup();
+    await renderPageToCanvas(visibleCurrentPage, spreadPrimaryCanvas, displayScale, `spread-${fitMode}-${Math.round(scale * 100)}`);
+
+    if (spreadSecondPage && spreadSecondaryCanvas) {
+      spreadSecondaryCanvas.style.display = '';
+      await renderPageToCanvas(spreadSecondPage, spreadSecondaryCanvas, displayScale, `spread-${fitMode}-${Math.round(scale * 100)}`);
+    } else if (spreadSecondaryCanvas) {
+      spreadSecondaryCanvas.width = 0;
+      spreadSecondaryCanvas.height = 0;
+      spreadSecondaryCanvas.style.display = 'none';
+    }
+  }
+
+  $: if (isSinglePageMode && originalPdfInstance && currentPage && scale && containerWidth && containerHeight) {
     renderCurrentPage();
   }
 
+  $: if (isTwoPageMode && originalPdfInstance && visibleCurrentPage && scale && containerWidth && containerHeight) {
+    renderSpreadPages();
+  }
+
   const goToNextPage = () => {
-    if (currentPage < activeTotalPages) {
-      pdfState.currentPage += 1;
+    const nextPage = normalizeTargetPage((currentPage || 1) + getNavigationStep());
+    if (nextPage > (currentPage || 1) && nextPage <= activeTotalPages) {
+      pdfState.currentPage = nextPage;
+      if (isSingleContinuousMode || isTwoPageContinuousMode) {
+        tick().then(() => scrollToPageAnchor(nextPage));
+      }
     }
   };
 
   const goToPrevPage = () => {
-    if (currentPage > 1) {
-      pdfState.currentPage -= 1;
+    const previousPage = normalizeTargetPage((currentPage || 1) - getNavigationStep());
+    if (previousPage < (currentPage || 1) && previousPage >= 1) {
+      pdfState.currentPage = previousPage;
+      if (isSingleContinuousMode || isTwoPageContinuousMode) {
+        tick().then(() => scrollToPageAnchor(previousPage));
+      }
     }
   };
   const zoomIn = () => {
@@ -230,6 +531,8 @@
 
   const resetZoom = () => {
     pdfState.scale = 1.0;
+    fitMode = 'fit-page';
+    showFitModeMenu = false;
   };
 
   $: if (prefetchPageNum > 0) {
@@ -247,6 +550,19 @@
     gridPages = [];
   }
 
+  $: continuousSinglePageWidth = basePageSize.width
+    ? Math.max(220, Math.floor(basePageSize.width * scale * getFitBaseScale(basePageSize.width, basePageSize.height)))
+    : 0;
+  $: continuousSpreadPageWidth = basePageSize.width
+    ? Math.max(180, Math.floor(basePageSize.width * scale * getFitBaseScale((basePageSize.width * 2) + SPREAD_GAP, basePageSize.height)))
+    : 0;
+  $: if ((isSingleContinuousMode || isTwoPageContinuousMode) && scrollContainer && previewAnchorPage > 0) {
+    const normalizedPage = normalizeTargetPage(previewAnchorPage);
+    if (normalizedPage !== lastProgrammaticAnchorPage) {
+      tick().then(() => scrollToPageAnchor(normalizedPage, false));
+    }
+  }
+
   async function autoScrollToActiveRange() {
     if (mode !== 'grid' || !scrollContainer) return;
     const range = tocRanges[activeRangeIndex];
@@ -254,6 +570,7 @@
 
     const targetPage = range.start;
     await tick();
+    if (!scrollContainer) return;
 
     const pageEl = scrollContainer.querySelector(`[data-page-num="${targetPage}"]`) as HTMLElement;
     if (pageEl) {
@@ -442,6 +759,7 @@
 
   function observeViewport(node: HTMLElement) {
     scrollContainer = node;
+    lastProgrammaticAnchorPage = 0;
 
     if (intersectionObserver) intersectionObserver.disconnect();
 
@@ -456,31 +774,38 @@
               const { instance, localPageNum } = getVirtualPageInfo(pageNum);
               if (!instance) return;
 
-              const dpr = Math.min(window.devicePixelRatio || 1, 2);
-              const canvasWidth = canvas.clientWidth;
-              
-              // Determine scale for grid view (thumbnails)
-              // We'll use a fixed width for the scale calculation to be consistent
-              const page = await instance.getPage(localPageNum);
-              const viewport = page.getViewport({ scale: 1.0 });
-              const scale = canvasWidth / viewport.width;
-              
-              const pageId = getPageId(pageNum);
-              
-              const bitmap = await renderQueue.enqueue(pageId, instance, localPageNum, 1);
-              
-              const ctx = canvas.getContext('2d', { alpha: false });
-              if (!ctx) return;
-              
-              canvas.width = Math.floor(viewport.width * scale * dpr);
-              canvas.height = Math.floor(viewport.height * scale * dpr);
-              canvas.style.width = `${canvasWidth}px`;
-              canvas.style.height = 'auto';
+              const measuredWidth = canvas.clientWidth
+                || canvas.parentElement?.clientWidth
+                || Math.floor(canvas.getBoundingClientRect().width)
+                || Math.floor(canvas.parentElement?.getBoundingClientRect().width || 0);
+              const canvasWidth = Math.max(measuredWidth || 0, 140);
 
-              ctx.clearRect(0, 0, canvas.width, canvas.height);
-              ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+              // Direct canvas rendering is slower than bitmap reuse, but much
+              // more reliable for thumbnail grids where some pages were
+              // intermittently ending up blank.
+              if (pdfServiceInstance?.renderPageToCanvas) {
+                await pdfServiceInstance.renderPageToCanvas(instance, localPageNum, canvas, canvasWidth);
+              } else {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                const page = await instance.getPage(localPageNum);
+                const viewport = page.getViewport({ scale: 1.0 });
+                const scale = canvasWidth / viewport.width;
+                const pageId = `thumb-${getPageId(pageNum)}`;
+                const bitmap = await renderQueue.enqueue(pageId, instance, localPageNum, 1);
+                const ctx = canvas.getContext('2d', { alpha: false });
+                if (!ctx) {
+                  page.cleanup();
+                  return;
+                }
 
-              page.cleanup();
+                canvas.width = Math.floor(viewport.width * scale * dpr);
+                canvas.height = Math.floor(viewport.height * scale * dpr);
+                canvas.style.width = `${canvasWidth}px`;
+                canvas.style.height = 'auto';
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                page.cleanup();
+              }
 
               if (intersectionObserver) {
                 intersectionObserver.unobserve(canvas);
@@ -504,6 +829,14 @@
 
     return {
       destroy() {
+        if (scrollContainer === node) {
+          // Reset container-bound sync state when switching view modes so the
+          // next mounted continuous scroller performs its initial anchor jump.
+          // @ts-ignore intentional reset for remount flow
+          scrollContainer = undefined;
+          lastProgrammaticAnchorPage = 0;
+          suppressScrollSync = false;
+        }
         if (intersectionObserver) {
           intersectionObserver.disconnect();
           intersectionObserver = null;
@@ -531,9 +864,11 @@
       },
     };
   }
+
 </script>
 
 <svelte:window
+  on:click={closeMenus}
   on:pointermove={handlePointerMove}
   on:pointerup={handlePointerUp}
   on:pointercancel={handlePointerUp}
@@ -543,93 +878,151 @@
   on:touchcancel={handlePointerUp}
 />
 
-<div class="h-[85vh] rounded-lg relative w-full bg-white">
+<div class="relative w-full flex-1 min-h-0 panel-paper overflow-visible">
   <div
-    class="flex flex-col h-full absolute w-full inset-0 z-10 bg-white rounded-md"
+    class="flex flex-col h-full absolute w-full inset-0 z-10 panel-paper"
     class:hidden={mode !== 'single'}
   >
-    <div
-      class="flex items-center flex-col justify-start w-full px-2 md:px-4 py-2 bg-white border-b-2 border-black rounded-t-md overflow-x-auto"
-    >
-      <div class="flex z-10 items-center justify-between w-full">
-        <div class="w-[70%] text-gray-600 font-serif flex gap-1 sm:gap-2 items-center text-sm md:text-base">
-          <span class="truncate">{filename}</span>
-          <span class="text-gray-300">|</span>
-          <div class="flex items-center gap-1 flex-nowrap">
+    <div class="relative z-40 w-full dialog-board pixel-reading-surface overflow-visible">
+      <div class="pixel-control-bar min-w-0 flex-nowrap gap-2 md:gap-3 overflow-visible">
+        <div class="pixel-control-group min-w-0 flex-1 flex-nowrap gap-2">
+          <span class="min-w-0 flex-1 truncate text-[13px] md:text-[15px] font-pixel-ui text-[color:var(--pa-bark)]">
+            {filename || $t('viewer.no_file')}
+          </span>
+          <span class="shrink-0 text-[color:rgba(77,45,23,0.35)]">|</span>
+          <div class="inventory-slot shrink-0 flex items-center gap-1.5 flex-nowrap min-h-12 min-w-[96px] md:min-w-[112px] justify-between px-2">
             <input
               type="number"
               min="1"
               max={activeTotalPages}
-              value={currentPage}
+              value={visibleCurrentPage}
               on:change={(e) => {
                 const val = parseInt(e.currentTarget.value, 10);
                 if (!isNaN(val) && val >= 1 && val <= activeTotalPages) {
-                  pdfState.currentPage = val;
+                  const targetPage = normalizeTargetPage(val);
+                  pdfState.currentPage = targetPage;
+                  if (isSingleContinuousMode || isTwoPageContinuousMode) {
+                    tick().then(() => scrollToPageAnchor(targetPage));
+                  }
                 } else {
-                  e.currentTarget.value = currentPage.toString();
+                  e.currentTarget.value = visibleCurrentPage.toString();
                 }
               }}
-              class="w-15 text-center border-b border-gray-300 focus:border-black outline-none bg-transparent p-0 text-gray-800"
+              class="w-10 md:w-12 text-center p-0 text-[color:var(--pa-ink)] min-h-10 bg-transparent shadow-none border-0"
             />
             {#if currentPageLabel}
-              <span class="text-xs text-gray-400 font-mono">({currentPageLabel})</span>
+              <span class="farm-badge hidden xl:inline-flex text-[11px]">{currentPageLabel}</span>
             {/if}
-            <span class="min-w-12">/ {activeTotalPages}</span>
+            <span class="min-w-[40px] md:min-w-[44px] font-pixel-ui text-[color:var(--pa-bark)] text-[13px] md:text-[14px]">/ {activeTotalPages}</span>
           </div>
 
           {#if tocPdfInstance && jumpToTocPage}
             <button
               on:click={jumpToTocPage}
-              class="p-1 sm:min-w-12 py-0.5 rounded-lg hover:bg-gray-100 text-black border-2 border-black shadow-[1px_1px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+              class="btn farm-btn-secondary shrink-0 min-h-12 h-12 px-2 md:px-3 text-[11px] md:text-xs"
               title={$t('tooltip.jump_toc')}
             >
-              <ListOrdered
-                size={11}
-                class="inline-block"
-              /> 
+              <PixelIcon size={14} pixels={iconList} class="inline-block" />
               <span class="hidden sm:inline">ToC</span>
             </button>
           {/if}
+
+          <div class="relative shrink-0">
+            <button
+              on:click|stopPropagation={toggleReadModeMenu}
+              class="btn farm-btn-secondary shrink-0 min-h-12 h-12 px-2 md:px-3 text-[11px] md:text-xs"
+              title={$t('viewer.read_mode_menu')}
+            >
+              <PixelIcon size={14} pixels={iconGrip} class="inline-block" />
+              <span class="hidden lg:inline">{getPreviewReadModeLabel(previewReadMode)}</span>
+              <PixelIcon size={10} pixels={iconChevronDown} class="hidden lg:inline-block" />
+            </button>
+
+            {#if showReadModeMenu}
+              <div
+                class="absolute right-0 top-[calc(100%+8px)] z-[70] dialog-board pixel-reading-surface min-w-[172px] p-1"
+              >
+                {#each previewReadModeOptions as option}
+                  <button
+                    type="button"
+                    class={`w-full text-left px-3 py-2 text-xs font-pixel-ui ${
+                      previewReadMode === option ? 'farm-btn-secondary text-[color:var(--pa-ink-inverse)]' : 'text-[color:var(--pa-bark)]'
+                    }`}
+                    on:click={() => setPreviewReadMode(option)}
+                  >
+                    {getPreviewReadModeLabel(option)}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
         </div>
 
-        <div class="flex items-center gap-1 w-[30%] flex-[0]">
+        <div class="pixel-control-group shrink-0 flex-nowrap gap-2">
           <button
             on:click={zoomOut}
-            class="p-1 md:p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+            class="farm-icon-button w-12 h-12"
             title={$t('tooltip.zoom_out')}
           >
-            <ZoomOut size={20} />
+            <PixelIcon size={18} pixels={iconZoomOut} />
           </button>
-          <span class="min-w-[30px] text-center text-gray-600 text-sm md:text-base md:min-w-[40px]">
+          <span class="inventory-slot min-h-12 min-w-[72px] justify-center text-xs md:text-sm font-pixel-ui text-[color:var(--pa-bark)]">
             {Math.round(scale * 100)}%
           </span>
           <button
             on:click={zoomIn}
-            class="p-1 md:p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+            class="farm-icon-button w-12 h-12"
             title={$t('tooltip.zoom_in')}
           >
-            <ZoomIn size={20} />
+            <PixelIcon size={18} pixels={iconZoomIn} />
           </button>
-          <button
-            on:click={resetZoom}
-            class="p-1 md:p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-            title={$t('tooltip.reset')}
-          >
-            <RotateCw size={20} />
-          </button>
+          <div class="relative shrink-0">
+            <button
+              on:click|stopPropagation={toggleFitModeMenu}
+              class="farm-icon-button w-12 h-12"
+              title={getFitModeLabel(fitMode)}
+            >
+              <PixelIcon size={18} pixels={iconMaximize} />
+            </button>
+
+            {#if showFitModeMenu}
+              <div
+                class="absolute right-0 top-[calc(100%+8px)] z-[70] dialog-board pixel-reading-surface min-w-[164px] p-1"
+              >
+                {#each fitModeOptions as option}
+                  <button
+                    type="button"
+                    class={`w-full text-left px-3 py-2 text-xs font-pixel-ui ${
+                      fitMode === option ? 'farm-btn-secondary text-[color:var(--pa-ink-inverse)]' : 'text-[color:var(--pa-bark)]'
+                    }`}
+                    on:click={() => setFitMode(option)}
+                  >
+                    {getFitModeLabel(option)}
+                  </button>
+                {/each}
+                <button
+                  type="button"
+                  class="w-full text-left px-3 py-2 text-xs font-pixel-ui text-[color:var(--pa-bark)]"
+                  on:click={resetZoom}
+                >
+                  {$t('tooltip.reset')}
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
     </div>
 
     <div
-      class="relative flex-1 overflow-hidden bg-gray-50 single-view-container"
+      class="relative z-10 flex-1 overflow-hidden panel-lake single-view-container"
       bind:clientWidth={containerWidth}
       bind:clientHeight={containerHeight}
     >
       {#if currentTocPath.length > 0}
-        <div class="absolute z-30 pointer-events-none max-w-[70%] md:max-w-[60%]">
+        <div class="absolute top-4 left-4 z-30 pointer-events-none max-w-[70%] md:max-w-[60%]">
           <div
-            class="backdrop-blur-sm border border-gray-200 p-2 text-xs rounded-[0_0_20px_0] backdrop-blur-sm bg-white/20 text-gray-600 font-mono space-y-0.5"
+            class="dialog-board pixel-reading-surface px-4 py-3 text-xs font-pixel-ui space-y-1 rounded-none"
           >
             {#each currentTocPath as item, i}
               <div
@@ -646,40 +1039,102 @@
         </div>
       {/if}
 
-      <button
-        on:click={goToPrevPage}
-        disabled={currentPage <= 1}
-        class="absolute left-2 top-1/2 -translate-y-1/2 p-1 md:left-4 md:p-2 rounded-full bg-white shadow-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed z-20 border-2 border-black"
-      >
-        <ChevronLeft size={24} />
-      </button>
+        <button
+          on:click={goToPrevPage}
+          disabled={visibleCurrentPage <= 1}
+          class="absolute left-3 top-1/2 -translate-y-1/2 md:left-5 z-20 farm-icon-button viewer-nav-button pointer-events-auto w-12 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <PixelIcon size={20} pixels={iconArrowLeft} />
+        </button>
 
-      <div class="w-full h-full overflow-auto flex">
-        <div class="m-auto p-4 max-w-full">
-          <canvas
-            class="max-w-full block"
-            bind:this={canvasElement}
-          ></canvas>
-        </div>
+        {#key previewReadMode}
+          {#if isSinglePageMode}
+            <div class="w-full h-full overflow-auto flex farm-scroll">
+              <div class="m-auto p-4 max-w-full">
+                <canvas
+                  class="max-w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                  bind:this={canvasElement}
+                ></canvas>
+              </div>
+            </div>
+          {:else if isTwoPageMode}
+            <div class="w-full h-full overflow-auto flex farm-scroll">
+              <div class="m-auto p-4 max-w-full">
+                <div class="flex items-start justify-center gap-6">
+                  <canvas
+                    class="max-w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                    bind:this={spreadPrimaryCanvas}
+                  ></canvas>
+                  <canvas
+                    class="max-w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                    bind:this={spreadSecondaryCanvas}
+                  ></canvas>
+                </div>
+              </div>
+            </div>
+          {:else if isSingleContinuousMode}
+            <div class="w-full h-full overflow-auto farm-scroll" use:observeViewport on:scroll={handleContinuousScroll}>
+              <div class="flex flex-col items-center gap-6 p-4">
+                {#each gridPages as page (page.pageNum)}
+                  <div
+                    data-page-anchor={page.pageNum}
+                    class="mx-auto"
+                    style={`width:${continuousSinglePageWidth || 320}px; max-width:100%;`}
+                  >
+                    <canvas
+                      class="w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                      use:lazyRender={{pageNum: page.pageNum}}
+                    ></canvas>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {:else if isTwoPageContinuousMode}
+            <div class="w-full h-full overflow-auto farm-scroll" use:observeViewport on:scroll={handleContinuousScroll}>
+              <div class="flex flex-col items-center gap-6 p-4">
+                {#each spreadStartPages as startPage (startPage)}
+                  <div
+                    data-page-anchor={startPage}
+                    class="mx-auto flex items-start justify-center gap-6 max-w-full"
+                  >
+                    <div style={`width:${continuousSpreadPageWidth || 240}px; max-width:calc(50vw - 2rem);`}>
+                      <canvas
+                        class="w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                        use:lazyRender={{pageNum: startPage}}
+                      ></canvas>
+                    </div>
+                    {#if startPage + 1 <= activeTotalPages}
+                      <div style={`width:${continuousSpreadPageWidth || 240}px; max-width:calc(50vw - 2rem);`}>
+                        <canvas
+                          class="w-full block panel-paper p-2 bg-[color:var(--pa-white)]"
+                          use:lazyRender={{pageNum: startPage + 1}}
+                        ></canvas>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/key}
+
+        <button
+          on:click={goToNextPage}
+          disabled={visibleCurrentPage >= activeTotalPages}
+          class="absolute right-3 top-1/2 -translate-y-1/2 md:right-5 z-20 farm-icon-button viewer-nav-button pointer-events-auto w-12 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <PixelIcon size={20} pixels={iconArrowRight} />
+        </button>
       </div>
-
-      <button
-        on:click={goToNextPage}
-        disabled={currentPage >= activeTotalPages}
-        class="absolute right-2 top-1/2 -translate-y-1/2 p-1 md:right-4 md:p-2 rounded-full bg-white shadow-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed z-20 border-2 border-black"
-      >
-        <ChevronRight size={24} />
-      </button>
-    </div>
   </div>
 
   <div
-    class="absolute inset-0 z-0 bg-gray-50 overflow-auto rounded-md"
+    class="absolute inset-0 z-0 panel-lake overflow-auto"
     class:hidden={mode !== 'grid'}
     use:observeViewport
   >
     <div
-      class="grid grid-cols-2 gap-3 p-3 select-none md:grid-cols-3 md:gap-4 2xl:grid-cols-4 2xl:gap-5"
+      class="grid grid-cols-2 gap-3 p-3 select-none md:grid-cols-3 md:gap-4 2xl:grid-cols-4 2xl:gap-5 farm-scroll"
       class:cursor-grabbing={isSelecting}
       on:touchmove|nonpassive={handleTouchMove}
       on:touchend={handlePointerUp}
@@ -697,13 +1152,10 @@
 
         <div
           data-page-num={page.pageNum}
-          class="relative rounded-lg overflow-hidden border-t-[2px] border-l-[2px] cursor-pointer bg-white transition-all duration-150 transform border-2"
+          class="relative overflow-hidden cursor-pointer inventory-card transition-all duration-150 transform"
           class:shadow-[3px_3px_0px]={isSelected}
-          class:shadow-blue-400={isSelected && isActive}
-          class:shadow-gray-400={isSelected && !isActive}
-          class:border-blue-500={isSelected && isActive}
-          class:border-gray-500={(isSelected && !isActive) || !isSelected}
           class:scale-[1.02]={isSelected}
+          class:!bg-[linear-gradient(180deg,rgba(255,255,255,0.32),rgba(255,255,255,0.08)),linear-gradient(180deg,#fff1cf,#efd5a2)]={isSelected}
           style="-webkit-touch-callout: none;"
           on:mousedown={() => handleMouseDown(page.pageNum)}
           on:touchstart={() => handleTouchStart(page.pageNum)}
@@ -714,9 +1166,7 @@
         >
           {#if isStart}
             <span
-              class="absolute -top-2.5 -left-2.5 z-10 rounded-full pr-2 pl-3 pt-3 text-xs font-bold text-white shadow-lg {isActive
-                ? 'bg-blue-600'
-                : 'bg-gray-500'}"
+              class="absolute -top-1.5 -left-1.5 z-10 farm-badge {isActive ? '!bg-[linear-gradient(180deg,#d9eef8,#74b6d4)]' : '!bg-[linear-gradient(180deg,#f7eed9,#e1cf9c)]'}"
             >
               {$t('label.start')}
             </span>
@@ -724,9 +1174,7 @@
 
           {#if isEnd}
             <span
-              class="absolute -bottom-2.5 -right-2.5 z-10 rounded-full pl-2 pr-3 pb-[10px] pt-[2px] text-xs font-bold text-white shadow-lg {isActive
-                ? 'bg-blue-600'
-                : 'bg-gray-500'}"
+              class="absolute -bottom-1.5 -right-1.5 z-10 farm-badge {isActive ? '!bg-[linear-gradient(180deg,#d9eef8,#74b6d4)]' : '!bg-[linear-gradient(180deg,#f7eed9,#e1cf9c)]'}"
             >
               {$t('label.end')}
             </span>
@@ -735,11 +1183,14 @@
           <canvas
             id={page.canvasId}
             class:cursor-grabbing={isSelecting}
-            class="w-full border-b bg-white h-[calc(100%-30px)]"
+            class="w-full border-b border-[color:var(--pa-bark)] bg-white h-[calc(100%-30px)]"
             use:lazyRender={{pageNum: page.pageNum}}
           ></canvas>
 
-          <div class="text-center text-xs p-2 bg-white">
+          <div class="absolute left-2 bottom-9 w-3 h-3 bg-[color:var(--pa-wood-dark)] border-2 border-[color:var(--pa-bark)]"></div>
+          <div class="absolute right-2 bottom-9 w-3 h-3 bg-[color:var(--pa-wood-dark)] border-2 border-[color:var(--pa-bark)]"></div>
+
+          <div class="text-center text-xs p-2 bg-[color:var(--pa-paper)] font-pixel-ui border-t-[4px] border-[color:var(--pa-bark)] tracking-[0.18em]">
             {page.pageNum}
           </div>
         </div>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import {fade} from 'svelte/transition';
   import {t} from 'svelte-i18n';
   import {createEventDispatcher} from 'svelte';
   import Dropzone from 'svelte-file-dropzone';
@@ -7,6 +6,8 @@
   import DropzoneView from '../DropzoneView.svelte';
   import PDFViewer from '../PDFViewer.svelte';
   import PDFControls from '../PDFControls.svelte';
+  import PixelDialog from '../pixel/PixelDialog.svelte';
+  import PixelPanel from '../pixel/PixelPanel.svelte';
 
   export let isFileLoading = false;
   export let isDragging = false;
@@ -23,6 +24,7 @@
   export let tocPageCount: number;
   export let currentTocPath: any[] = []; // TocItem[]
   export let prefetchPageNum: number = 0;
+  export let previewAnchorPage: number = 0;
 
   export let jumpToTocPage: () => Promise<void>;
 
@@ -50,21 +52,25 @@
   }
 </script>
 
-<div class="flex flex-col w-full lg:w-[70%]">
-  <div
-    class="h-fit pb-4 min-h-[85vh] top-5 sticky border-black border-2 rounded-lg bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)]"
+<div class="flex flex-col w-full workshop-preview self-stretch min-h-full">
+  <PixelPanel
+    variant="paper"
+    padding="none"
+    class="flex h-full min-h-[72vh] flex-col overflow-visible pb-0 lg:sticky lg:top-4 lg:h-[calc(100vh-2.5rem)] lg:min-h-[calc(100vh-2.5rem)]"
   >
     {#if isFileLoading}
-      <div
-        class="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50 rounded-lg"
-        transition:fade={{duration: 100}}
+      <PixelDialog
+        open={true}
+        variant="dialog"
+        class="absolute"
+        surfaceClass="p-5 text-center"
       >
         <div class="flex flex-col items-center gap-4">
-          <div class="animate-spin rounded-full h-12 w-12 border-4 border-black border-t-transparent"></div>
-          <span class="text-xl font-bold">{$t('status.loading_rendering')}</span>
+          <div class="pixel-spinner pixel-spinner--lg"></div>
+          <span class="pixel-loading-text text-base">{$t('status.loading_rendering')}</span>
         </div>
-      </div>
-    {:else}
+      </PixelDialog>
+    {:else if !pdfState.instance}
       <Dropzone
         containerClasses="absolute inset-0 w-full h-full"
         accept=".pdf"
@@ -81,7 +87,7 @@
     {/if}
 
     {#if pdfState.instance}
-      <div class="relative z-10 h-full flex flex-col">
+      <div class="relative z-10 flex h-full min-h-0 flex-1 flex-col">
         <PDFViewer
           bind:pdfState
           mode={isPreviewMode ? 'single' : 'grid'}
@@ -96,6 +102,7 @@
           {addPhysicalTocPage}
           {currentTocPath}
           {prefetchPageNum}
+          {previewAnchorPage}
         />
 
         <input
@@ -119,5 +126,5 @@
         />
       </div>
     {/if}
-  </div>
+  </PixelPanel>
 </div>

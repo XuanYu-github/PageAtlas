@@ -1,6 +1,8 @@
 <script lang="ts">
   import {fade, fly} from 'svelte/transition';
-  import {Sparkles, Download, X, Loader2, AlertTriangle} from 'lucide-svelte';
+  import {t} from 'svelte-i18n';
+  import PixelIcon from '../icons/PixelIcon.svelte';
+  import {iconAlert, iconClose, iconDownload, iconSparkle} from '../icons/index';
 
   export let showUpdateModal: boolean = false;
   export let updateData: {version: string; body: string; date?: string} | null = null;
@@ -44,34 +46,31 @@
     transition:fade={{duration: 150}}
     role="button"
     tabindex="0"
-    aria-label="Close update dialog"
+    aria-label={$t('update_modal.close')}
     on:click|self={handleClose}
     on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && handleClose()}
   >
     <div
-      class="bg-white rounded-lg p-0 max-w-lg w-full max-h-[85vh] flex flex-col border-4 border-black shadow-[12px_12px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+      class="panel-paper pixel-reading-surface p-0 max-w-lg w-full max-h-[85vh] flex flex-col relative overflow-hidden"
       transition:fly={{y: 20, duration: 200}}
     >
-      <div class="bg-yellow-300 border-b-4 border-black p-5 flex justify-between items-center">
+      <div class="panel-wood border-b-4 border-black p-5 flex justify-between items-center">
         <div class="flex items-center gap-3">
-          <div class="bg-white p-2 border-2 border-black rounded shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-            <Sparkles
-              size={24}
-              class="text-black"
-            />
+          <div class="panel-paper pixel-reading-surface p-2 w-12 h-12 flex items-center justify-center">
+            <PixelIcon size={20} pixels={iconSparkle} />
           </div>
           <div>
-            <h2 class="text-2xl font-black italic tracking-tighter">NEW VERSION</h2>
-            <p class="text-xs font-bold ">v{updateData.version} is available!</p>
+            <h2 class="text-[20px] font-pixel-heading tracking-tight">{$t('update_modal.title')}</h2>
+            <p class="text-xs font-pixel-ui">{$t('update_modal.available', {values: {version: updateData.version}})}</p>
           </div>
         </div>
 
         {#if !isUpdating}
           <button
             on:click={handleClose}
-            class="p-2 rounded-lg border-2 border-transparent hover:bg-black hover:text-white transition-colors"
+            class="farm-icon-button w-10 h-10"
           >
-            <X size={24} />
+            <PixelIcon size={18} pixels={iconClose} />
           </button>
         {/if}
       </div>
@@ -79,26 +78,23 @@
       <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
         {#if errorMessage}
           <div
-            class="mb-4 bg-red-100 border-2 border-red-600 text-red-700 p-3 rounded flex items-start gap-3"
+            class="mb-4 panel-paper pixel-reading-surface !bg-[linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.04)),linear-gradient(180deg,#e8a38c,#c55c45)] text-[color:var(--pa-white)] p-3 flex items-start gap-3"
             transition:fade
           >
-            <AlertTriangle
-              class="shrink-0 mt-0.5"
-              size={20}
-            />
+            <PixelIcon class="shrink-0 mt-0.5" size={18} pixels={iconAlert} />
             <div class="text-sm font-bold">
-              <p>Update Failed:</p>
+              <p>{$t('update_modal.failed')}</p>
               <p class="font-normal">{errorMessage}</p>
             </div>
           </div>
         {/if}
 
         <div class="prose prose-sm max-w-none">
-          <p class="font-bold text-lg mb-2">✨ What's New:</p>
+          <p class="font-pixel-ui font-bold text-base mb-2">{$t('update_modal.whats_new')}</p>
           <div
-            class="bg-gray-50 border-2 border-black rounded p-4  text-sm whitespace-pre-wrap leading-relaxed"
+            class="panel-paper pixel-reading-surface p-4 text-sm whitespace-pre-wrap leading-relaxed"
           >
-            {updateData.body || 'Bug fixes and performance improvements.'}
+            {updateData.body || $t('update_modal.default_body')}
           </div>
         </div>
       </div>
@@ -107,28 +103,22 @@
         <button
           on:click={handleClose}
           disabled={isUpdating}
-          class="px-4 py-3 font-bold border-2 border-black rounded bg-white text-black hover:bg-gray-100 transition-all active:translate-x-[2px] active:translate-y-[2px] shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-[2px_2px_0px_rgba(0,0,0,1)] disabled:translate-x-0 disabled:translate-y-0"
+          class="btn farm-btn-secondary"
         >
-          Later
+          {$t('update_modal.later')}
         </button>
 
         <button
           on:click={handleUpdateClick}
           disabled={isUpdating}
-          class="flex items-center justify-center gap-2 px-4 py-3 font-bold border-2 border-black rounded bg-green-400 text-black transition-all active:translate-x-[2px] active:translate-y-[2px] shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-green-300 active:shadow-none disabled:bg-green-200 disabled:cursor-not-allowed disabled:shadow-[2px_2px_0px_rgba(0,0,0,1)] disabled:translate-x-0 disabled:translate-y-0"
+          class="btn farm-btn-water"
         >
           {#if isUpdating}
-            <Loader2
-              size={20}
-              class="animate-spin"
-            />
-            <span>Installing...</span>
+            <div class="pixel-spinner"></div>
+            <span>{$t('update_modal.installing')}</span>
           {:else}
-            <Download
-              size={20}
-              strokeWidth={3}
-            />
-            <span>Update Now</span>
+            <PixelIcon size={18} pixels={iconDownload} />
+            <span>{$t('update_modal.update_now')}</span>
           {/if}
         </button>
       </div>

@@ -5,12 +5,16 @@
 
   import Header from '../Header.svelte';
   import PdfQaPanel from '../PdfQaPanel.svelte';
+  import PixelButton from '../pixel/PixelButton.svelte';
+  import PixelPanel from '../pixel/PixelPanel.svelte';
+  import PixelSidebar from '../pixel/PixelSidebar.svelte';
   import ApiSetting from '../settings/ApiSetting.svelte';
   import TocSettings from '../settings/TocSetting.svelte';
   import PageSelector from '../PageSelector.svelte';
   import TocEditor from '../TocEditor.svelte';
-  import {Sparkles, X} from 'lucide-svelte';
   import {curFileFingerprint} from '../../stores';
+  import PixelIcon from '../icons/PixelIcon.svelte';
+  import {iconClose, iconSparkle} from '../icons/index';
 
   import type {ChapterSourceFormat, QaChapterReference, QaPanelMessage} from '$lib/types/pdf-qa';
 
@@ -25,7 +29,7 @@
   export let activeRangeIndex: number;
   export let addPhysicalTocPage: boolean;
   export let isTocConfigExpanded: boolean;
-  export let activeMode: 'toc' | 'qa' = 'toc';
+  export let activeMode: 'toc' | 'qa' | 'api' = 'toc';
 
   export let config: any;
   export let customApiConfig: any;
@@ -49,48 +53,54 @@
   export let tocEditor: any = undefined;
 </script>
 
-<div class="w-full lg:w-[35%] flex-shrink-0">
+<PixelSidebar class="w-full lg:w-full flex-shrink-0 workshop-sidebar p-4 md:p-5 text-[color:var(--pa-bark)]">
   <Header on:openhelp={() => dispatch('openhelp')} />
 
-  <ApiSetting
-    on:change={(e) => dispatch('apiConfigChange', e.detail)}
-    on:save={() => dispatch('apiConfigSave')}
-  />
+  {#if activeMode === 'api'}
+    <ApiSetting
+      isExpanded={true}
+      on:change={(e) => dispatch('apiConfigChange', e.detail)}
+      on:save={() => dispatch('apiConfigSave')}
+      on:notify={(e) => dispatch('notify', e.detail)}
+    />
+  {/if}
 
   {#if activeMode === 'toc'}
-    <TocSettings
-      {config}
-      {tocPdfInstance}
-      {tocRanges}
-      totalPages={pdfState.totalPages}
-      bind:isTocConfigExpanded
-      bind:addPhysicalTocPage
-      on:toggleExpand={() => (isTocConfigExpanded = !isTocConfigExpanded)}
-      on:updateField={(e) => dispatch('updateField', e.detail)}
-      on:jumpToTocPage={() => dispatch('jumpToTocPage')}
-    />
+    <div class="space-y-3">
+      <TocSettings
+        {config}
+        {tocPdfInstance}
+        {tocRanges}
+        totalPages={pdfState.totalPages}
+        bind:isTocConfigExpanded
+        bind:addPhysicalTocPage
+        on:toggleExpand={() => (isTocConfigExpanded = !isTocConfigExpanded)}
+        on:updateField={(e) => dispatch('updateField', e.detail)}
+        on:jumpToTocPage={() => dispatch('jumpToTocPage')}
+      />
+    </div>
   {/if}
 
   {#if activeMode === 'toc' && showNextStepHint && originalPdfInstance}
     <div
-      class="relative border-black border-2 rounded-lg p-3 my-4 bg-yellow-200 shadow-[2px_2px_0px_rgba(0,0,0,1)]"
+      class="pixel-notice p-4 my-4"
       transition:fade={{duration: 200}}
     >
       <button
-        class="absolute top-1 right-1 p-1 hover:bg-black/10 rounded-full transition-colors"
+        class="absolute top-2 right-2 farm-icon-button w-8 h-8"
         on:click={() => dispatch('closeNextStepHint')}
         title={$t('btn.close_hint')}
       >
-        <X size={16} />
+        <PixelIcon size={16} pixels={iconClose} />
       </button>
-      <h3 class="font-bold mb-2">{$t('hint.next_step_title')}:</h3>
-      <p class="text-sm text-gray-800">
+      <h3 class="farm-section-title !mb-2"><PixelIcon size={16} pixels={iconSparkle} /> {$t('hint.next_step_title')}:</h3>
+      <p class="text-sm text-[color:var(--pa-ink)] leading-6">
         1. {$t('hint.step_1_text')} <strong class="text-black">{$t('hint.step_1_bold')}</strong>
       </p>
-      <p class="text-sm text-gray-800 mt-1">
+      <p class="text-sm text-[color:var(--pa-ink)] mt-1 leading-6">
         2. {$t('hint.step_2_text')} <strong class="text-black">{$t('hint.step_2_bold')}</strong>
       </p>
-      <p class="text-sm text-gray-800 mt-2">
+      <p class="text-sm text-[color:var(--pa-ink)] mt-2 leading-6">
         {$t('hint.or_text')} <strong class="text-black">{$t('hint.manual_add_bold')}</strong>
         {$t('hint.manual_add_text')}
       </p>
@@ -115,13 +125,13 @@
 
   {#if originalPdfInstance && activeMode === 'qa'}
     <div transition:fade={{duration: 200}}>
-      <PageSelector
-        tocRanges={qaPageRanges}
-        activeRangeIndex={qaActiveRangeIndex}
-        totalPages={pdfState.totalPages}
-        title={$t('qa.page_selection_title')}
-        addRangeTitle={$t('label.add_range')}
-        on:addRange={() => dispatch('addQaRange')}
+        <PageSelector
+          tocRanges={qaPageRanges}
+          activeRangeIndex={qaActiveRangeIndex}
+          totalPages={qaPageCount || originalPdfInstance?.numPages || pdfState.totalPages}
+          title={$t('qa.page_selection_title')}
+          addRangeTitle={$t('label.add_range')}
+          on:addRange={() => dispatch('addQaRange')}
         on:removeRange={(e) => dispatch('removeQaRange', e.detail)}
         on:setActiveRange={(e) => dispatch('setQaActiveRange', e.detail)}
         on:rangeChange={() => dispatch('qaRangeChange')}
@@ -139,6 +149,7 @@
         textPageCount={qaTextPageCount}
         processedPageCount={qaProcessedPageCount}
         currentPage={qaCurrentPage}
+        viewerPage={pdfState.currentPage}
         pageRanges={qaPageRanges}
         activePageRangeIndex={qaActiveRangeIndex}
         isAsking={isQaAsking}
@@ -154,8 +165,9 @@
   {/key}
 
   {#if activeMode === 'toc'}
-    <button
-      class="btn w-full my-2 font-bold bg-blue-400 transition-all duration-300 text-black border-2 border-black rounded-lg px-3 py-2 shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] disabled:bg-gray-300 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0"
+    <PixelButton
+      variant="water"
+      class="w-full my-1"
       on:click={() => dispatch('generateAi')}
       title={isAiLoading
         ? $t('status.generating')
@@ -168,20 +180,17 @@
         <span>{$t('btn.generating')}</span>
       {:else}
         <span>
-          <Sparkles
-            size={16}
-            class="inline-block mr-1"
-          />
+          <PixelIcon size={16} pixels={iconSparkle} class="inline-block mr-1" />
           {$t('btn.generate_toc_ai')}</span
         >
       {/if}
-    </button>
+    </PixelButton>
   {/if}
 
   {#if activeMode === 'toc' && aiError}
-    <div class="my-2 p-3 bg-red-100 border-2 border-red-700 text-red-700 rounded-lg">
+    <PixelPanel variant="dialog" class="my-2 p-3 !bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.04)),repeating-linear-gradient(180deg,#f0b09a_0_8px,#bd5b45_8px_16px)] text-[color:var(--pa-ink-inverse)]">
       {aiError}
-    </div>
+    </PixelPanel>
   {/if}
 
   {#if activeMode === 'toc'}
@@ -200,4 +209,4 @@
       />
     {/key}
   {/if}
-</div>
+</PixelSidebar>

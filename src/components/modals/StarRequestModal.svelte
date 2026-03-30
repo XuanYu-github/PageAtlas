@@ -1,8 +1,10 @@
 <script lang="ts">
   import { fade, fly } from 'svelte/transition';
   import { t } from 'svelte-i18n';
-  import { Github, MessageSquare, X, Star } from 'lucide-svelte';
   import { createEventDispatcher } from 'svelte';
+  import {openExternalUrl} from '$lib/utils/open-external';
+  import PixelIcon from '../icons/PixelIcon.svelte';
+  import {iconChat, iconClose, iconGithub, iconStar} from '../icons/index';
 
   export let show: boolean = false;
 
@@ -15,12 +17,12 @@
   }
 
   function handleStar() {
-    window.open(GITHUB_URL, '_blank');
+    void openExternalUrl(GITHUB_URL);
     handleDontShow();
   }
 
   function handleFeedback() {
-    window.open(`${GITHUB_URL}/issues`, '_blank');
+    void openExternalUrl(`${GITHUB_URL}/issues`);
     close();
   }
 
@@ -41,27 +43,24 @@
     on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && close()}
   >
     <div
-      class="bg-white rounded-xl p-8 max-w-md w-full border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+      class="panel-paper pixel-reading-surface p-8 max-w-md w-full relative overflow-hidden"
       transition:fly={{ y: 20, duration: 300 }}
     >
       <button
         on:click={close}
-        class="absolute -top-6 -right-6 w-24 h-24 bg-yellow-300 rounded-full border-4 border-black -rotate-12 flex items-center justify-center group hover:bg-white transition-all active:scale-95 z-20"
-        title="Close"
+        class="absolute top-3 right-3 farm-icon-button w-10 h-10 z-20"
+        title={$t('common.close')}
       >
-        <Star
-          size={40}
-          class="fill-black group-hover:fill-transparent transition-all"
-          strokeWidth={3}
-        />
+        <PixelIcon size={18} pixels={iconClose} />
       </button>
 
       <div class="flex flex-col gap-6 pt-4">
         <div class="space-y-2">
-          <h2 class="text-3xl font-black italic uppercase tracking-tight">
+          <div class="farm-kicker mb-2"><PixelIcon size={14} pixels={iconStar} /> {$t('star_request.notice')}</div>
+          <h2 class="text-[20px] md:text-[24px] tracking-tight">
             {$t('star_request.title')}
           </h2>
-          <p class=" font-medium text-gray-700 leading-relaxed">
+          <p class="pixel-reading-surface p-3 font-medium text-gray-700 leading-relaxed">
             {$t('star_request.body')}
           </p>
         </div>
@@ -69,17 +68,17 @@
         <div class="flex flex-col gap-3 mt-2">
           <button
             on:click={handleStar}
-            class="flex items-center justify-center gap-2 py-4 bg-black text-white rounded-xl font-bold text-lg hover:bg-gray-800 transition-all active:scale-95 shadow-[4px_4px_0px_rgba(0,0,0,0.3)]"
+            class="btn farm-btn-night text-lg"
           >
-            <Github size={24} />
+            <PixelIcon size={18} pixels={iconGithub} />
             {$t('star_request.btn_star')}
           </button>
 
           <button
             on:click={handleFeedback}
-            class="flex items-center justify-center gap-2 py-4 bg-yellow-400 border-4 border-black rounded-xl font-bold text-lg hover:bg-yellow-300 transition-all active:scale-95 shadow-[4px_4px_0px_rgba(0,0,0,1)]"
+            class="btn text-lg"
           >
-            <MessageSquare size={24} />
+            <PixelIcon size={18} pixels={iconChat} />
             {$t('star_request.btn_feedback')}
           </button>
         </div>

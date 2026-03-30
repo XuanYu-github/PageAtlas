@@ -2,7 +2,7 @@
 
 ## Purpose
 - This file guides coding agents working in `PageAtlas Lite`.
-- The repository is now a browser-only, static SvelteKit app intended for GitHub Pages.
+- The repository supports both a static SvelteKit web build for GitHub Pages and a Tauri desktop shell for local-app distributions.
 
 ## Canonical Rule Files
 - No `.cursorrules` file was found.
@@ -11,15 +11,17 @@
 - Treat this file as the main agent instruction source.
 
 ## Product Summary
-- `PageAtlas Lite` is a GPLv3, browser-only PDF workspace.
+- `PageAtlas Lite` is a GPLv3 PDF workspace.
 - Core features: local PDF preview, local ToC editing, AI ToC generation, page/chapter Q&A, and knowledge-board generation.
-- AI features run directly in the browser with BYOK provider settings.
-- There is no server-side indexing, OCR pipeline, Redis cache, or backend document storage anymore.
+- Web mode remains browser-first.
+- Desktop mode uses a local Tauri backend for provider requests that fail in browser-only mode due to CORS.
+- There is no remote server-side indexing, OCR pipeline, Redis cache, or backend document storage.
 
 ## Stack And Runtime
 - SvelteKit 2 with Svelte 5, Vite 6, and Tailwind CSS 3.
 - Static adapter: `@sveltejs/adapter-static`.
 - Deployment target: GitHub Pages under base path `/PageAtlas`.
+- Desktop target: Tauri 2 with Rust backend under `src-tauri/`.
 - Package manager: `pnpm`.
 - Build target: `es2018`.
 - `.npmrc` still uses `engine-strict=true`.
@@ -28,6 +30,7 @@
 - `src/routes/+page.svelte`: main app shell and PDF workflow.
 - `src/components/*`: editor, viewer, settings, graph, modals, and panels.
 - `src/lib/client/ai.ts`: browser-side AI provider wrapper.
+- `src-tauri/src/ai.rs`: desktop-side AI request bridge for Tauri mode.
 - `src/lib/client/pdf-qa.ts`: browser-side page extraction and QA helpers.
 - `src/lib/pdf/*`: PDF preview, outline writing, page labels, and worker logic.
 - `src/lib/utils/*`: tree, chapter, graph, and helper utilities.
@@ -40,6 +43,8 @@
 - Dev: `pnpm dev`
 - Build: `pnpm build`
 - Preview: `pnpm preview`
+- Desktop dev: `pnpm tauri:dev`
+- Desktop build: `pnpm tauri:build`
 - Check: `pnpm check`
 - Watch check: `pnpm check:watch`
 - Lint: none configured.
@@ -62,8 +67,15 @@
 - Use `$app/paths` `base` for app-local links and static assets.
 - Keep worker, font, favicon, and media URLs base-aware.
 
+## Desktop Rules
+- Desktop builds use `PAGEATLAS_TARGET=desktop` so web base path must resolve to `''` in that mode.
+- Native provider requests for Tauri should go through `src-tauri/src/ai.rs`, not ad hoc shell calls.
+- Keep the desktop bridge limited to local execution; do not add a remote backend service.
+
 ## AI / Provider Rules
-- All model calls should happen in the browser via `src/lib/client/ai.ts`.
+- Model call orchestration stays centralized in `src/lib/client/ai.ts`.
+- Web mode may call providers from the browser.
+- Desktop mode may route OpenAI-compatible providers through the Tauri backend to bypass browser CORS.
 - Assume BYOK: user enters API keys locally.
 - Never hardcode secrets, API keys, or personal tokens into the repo.
 - OpenAI-compatible presets should stay local to the browser.

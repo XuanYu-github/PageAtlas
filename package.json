@@ -3,21 +3,33 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"packageManager": "pnpm@10.32.1",
 	"scripts": {
 		"dev": "vite dev --host",
 		"build": "vite build",
 		"preview": "vite preview --host",
+		"tauri:dev": "cross-env PAGEATLAS_TARGET=desktop tauri dev",
+		"tauri:build": "cross-env PAGEATLAS_TARGET=desktop tauri build",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"pnpm": {
+		"supportedArchitectures": {
+			"os": ["current", "win32", "linux"],
+			"cpu": ["current", "x64"],
+			"libc": ["current", "glibc"]
+		}
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.8",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/typography": "^0.5.16",
+		"@tauri-apps/cli": "^2.10.1",
 		"@types/node": "^25.5.0",
 		"autoprefixer": "^10.4.20",
+		"cross-env": "^10.1.0",
 		"pdfjs-dist": "^4.10.38",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
@@ -28,6 +40,8 @@
 	"dependencies": {
 		"@aptabase/web": "^0.4.3",
 		"@google/generative-ai": "^0.24.1",
+		"@tauri-apps/api": "^2.10.1",
+		"@tauri-apps/plugin-opener": "^2",
 		"jsonrepair": "^3.13.1",
 		"lucide-svelte": "^0.474.0",
 		"openai": "^6.15.0",

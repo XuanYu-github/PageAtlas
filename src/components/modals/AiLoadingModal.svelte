@@ -12,7 +12,7 @@
     transition:fade={{duration: 200}}
   >
     <div
-      class="bg-white p-8 sm:p-12 border-4 border-black rounded-lg shadow-[8px_8px_0px_rgba(0,0,0,1)] flex flex-col items-center gap-6 w-11/12 max-w-md"
+      class="panel-paper p-8 sm:p-12 flex flex-col items-center gap-6 w-11/12 max-w-md"
     >
       <div class="text-xl text-center font-bold text-black">
         <span>
@@ -28,7 +28,7 @@
         <br />
         <span>{$t('loading.take_minutes')}</span>
       </div>
-      <div class="animate-spin rounded-full h-12 w-12 border-4 border-black border-t-transparent"></div>
+      <div class="pixel-spinner pixel-spinner--lg"></div>
     </div>
   </div>
 {/if}

@@ -1,12 +1,13 @@
 <script lang="ts">
   import {onDestroy, tick, createEventDispatcher} from 'svelte';
   import ShortUniqueId from 'short-unique-id';
-  import {Sparkles, Loader2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown} from 'lucide-svelte';
   import {t} from 'svelte-i18n';
   import TocItem from './TocItem.svelte';
   import Tooltip from './Tooltip.svelte';
   import {tocItems, maxPage, autoSaveEnabled, dragDisabled, curFileFingerprint} from '../stores';
   import type {TocItem as TocEntry} from '$lib/pdf/service';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import {iconChevronDown, iconChevronRight, iconList, iconSparkle} from './icons';
 
   import {dndzone} from 'svelte-dnd-action';
   import {flip} from 'svelte/animate';
@@ -418,12 +419,12 @@
 />
 
 <div class="flex flex-col gap-4 mt-3">
-  <div class="h-48 relative group">
+  <div class="h-52 relative group panel-paper p-3">
     <textarea
       placeholder={$t('toc.outline_placeholder')}
       bind:value={text}
       on:input={handleInput}
-      class="w-full h-full border-2 border-black rounded-lg p-2 text-sm myfocus leading-6 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none pr-10"
+      class="w-full h-full p-3 text-[16px] myfocus leading-8 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none pr-14 font-pixel-ui text-[color:var(--pa-bark)] placeholder:text-[color:rgba(91,67,48,0.68)]"
     ></textarea>
 
     {#if hasInvalidLines}
@@ -437,16 +438,13 @@
           <button
             on:click={handleAiFormat}
             disabled={isProcessing || !text.trim()}
-            class="flex items-center gap-1.5 bg-gradient-to-br from-blue-300 to-pink-600 text-white px-3 py-1.5 rounded-md shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+            class="btn farm-btn-water px-3 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {#if isProcessing}
-              <Loader2
-                size={16}
-                class="animate-spin"
-              />
+              <div class="pixel-spinner"></div>
               <span class="text-xs font-bold">Processing...</span>
             {:else}
-              <Sparkles size={16} />
+              <PixelIcon size={16} pixels={iconSparkle} />
               <span class="text-xs font-bold">AI Format</span>
             {/if}
           </button>
@@ -461,22 +459,22 @@
         class="flex items-center gap-1 sticky top-12 z-20 opacity-0 group-hover/toc-list:opacity-100 transition-all duration-300 translate-y-1 group-hover/toc-list:translate-y-0 pointer-events-none"
       >
         {#if firstItemWithChildrenId}
-          <div class="-ml-2.5 -mb-8 pointer-events-auto bg-white/50 backdrop-blur-sm rounded-md shadow-sm">
+      <div class="-ml-2.5 -mb-8 pointer-events-auto panel-paper px-1 py-1">
             {#if hasAnyExpanded}
               <button
                 on:click={collapseAll}
-                class="p-1 rounded-md text-gray-500 hover:text-gray-700 transition-colors"
+                class="farm-icon-button w-9 h-9"
                 title={$t('toc.collapse_all')}
               >
-                <ChevronsDownUp size={17} font-weight={600} />
+                <PixelIcon size={16} pixels={iconChevronDown} class="rotate-180" />
               </button>
             {:else}
               <button
                 on:click={expandAll}
-                class="p-1 rounded-md text-gray-500 hover:text-gray-700 transition-colors"
+                class="farm-icon-button w-9 h-9"
                 title={$t('toc.expand_all')}
               >
-                <ChevronsUpDown size={17} font-weight={600} />
+                <PixelIcon size={16} pixels={iconList} />
               </button>
             {/if}
           </div>
@@ -485,12 +483,12 @@
 
       {#if showNavHint}
         <div class="absolute right-0 top-0 z-50 h-6 flex justify-center pointer-events-none">
-          <div 
-            transition:fly={{y: -10, duration: 300}}
-            class="bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-lg pointer-events-none"
-          >
-            {$t('toc.nav_hint')}
-          </div>
+        <div 
+          transition:fly={{y: -10, duration: 300}}
+          class="farm-badge bg-[color:var(--pa-night-sky)] text-[color:var(--pa-night-ink)] pointer-events-none"
+        >
+          {$t('toc.nav_hint')}
+        </div>
         </div>
       {/if}
 
@@ -503,7 +501,7 @@
         }}
         on:consider={handleDndConsider}
         on:finalize={handleDndFinalize}
-        class="min-h-[20px]"
+        class="min-h-[20px] space-y-1"
       >
         {#each $tocItems as item, i (item.id)}
           <div animate:flip={{duration: flipDurationMs}}>
@@ -529,25 +527,27 @@
       </section>
     {/if}
 
-    <div class="flex items-center gap-2 ml-8 mt-3 mb-4">
-      <button
-        on:click={addTocItem}
-        class="btn font-bold bg-yellow-400 text-black border-2 border-black rounded-lg px-4 py-2 shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
-      >
-        {$t('btn.add_chapter')}
-      </button>
-      <button
-        on:click={() => addMultipleTocItems(5)}
-        class="btn font-bold bg-gray-100 text-black border-2 border-black rounded-lg px-3 py-2 shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all text-sm"
-      >
-        +5
-      </button>
-      <button
-        on:click={() => addMultipleTocItems(10)}
-        class="btn font-bold bg-gray-100 text-black border-2 border-black rounded-lg px-3 py-2 shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all text-sm"
-      >
-        +10
-      </button>
+    <div class="ml-8 mt-3 mb-4 panel-wood p-3">
+      <div class="flex items-center gap-2 flex-nowrap">
+        <button
+          on:click={addTocItem}
+          class="btn min-w-[7.5rem] px-3 text-sm"
+        >
+          {$t('btn.add_chapter')}
+        </button>
+        <button
+          on:click={() => addMultipleTocItems(5)}
+          class="btn farm-btn-secondary text-sm min-w-[4.5rem]"
+        >
+          +5
+        </button>
+        <button
+          on:click={() => addMultipleTocItems(10)}
+          class="btn farm-btn-secondary text-sm min-w-[4.5rem]"
+        >
+          +10
+        </button>
+      </div>
     </div>
   </div>
 </div>

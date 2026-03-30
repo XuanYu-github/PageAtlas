@@ -2,7 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import { t } from 'svelte-i18n';
   import type { PageLabelSettings, PageLabelStyle } from '$lib/pdf/page-labels';
-  import {Trash2} from 'lucide-svelte';
+  import PixelIcon from '../icons/PixelIcon.svelte';
+  import {iconTrash} from '../icons';
 
   export let settings: PageLabelSettings;
 
@@ -53,7 +54,7 @@
 </script>
 
 <div class="space-y-3">
-  <div class="text-xs text-gray-700">
+  <div class="farm-subtitle">
     {$t('settings.page_labels_hint')}
   </div>
 
@@ -63,19 +64,19 @@
     {@const prefixId = `page-label-prefix-${i}`}
     {@const startAtId = `page-label-start-at-${i}`}
     {#if i > 0}
-      <div class="border-t-2 border-dotted border-gray-300 mx-auto"></div>
+      <div class="border-t-[3px] border-dashed border-[color:var(--pa-paper-line)] mx-auto"></div>
     {/if}
     <div class="relative">
-      <div class="flex justify-between items-center mb-1">
-        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">{$t('label.segment_range_n', {values: {n: i + 1}})}</span>
-        <button class="text-gray-400 hover:text-black p-1 hover:bg-gray-100 rounded transition-colors"
+      <div class="flex justify-between items-center mb-2">
+        <span class="farm-badge">{$t('label.segment_range_n', {values: {n: i + 1}})}</span>
+        <button class="farm-icon-button w-8 h-8 text-[color:var(--pa-berry)]"
           on:click={() => removeSegment(i)}
           title={$t('settings.remove')}
         >
-          <Trash2 size={14} />
+          <PixelIcon size={14} pixels={iconTrash} />
         </button>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="panel-paper p-3 flex items-center gap-2">
         <div class="w-20">
           <label for={startPageId} class="text-xs text-gray-500 block mb-1">{$t('settings.start_page')}</label>
           <input
@@ -105,7 +106,7 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-2 mt-2">
+      <div class="panel-paper p-3 flex items-center gap-2 mt-2">
         <div class="flex-1 min-w-[120px]">
           <label for={prefixId} class="text-xs text-gray-500 block mb-1">{$t('settings.prefix')}</label>
           <input
@@ -137,7 +138,7 @@
   {/each}
 
   <button
-    class="w-full h-9 border-2 border-gray-500 rounded-md bg-white hover:bg-gray-50 text-base font-bold leading-none"
+    class="btn farm-btn-secondary w-full"
     on:click={addSegment}
     title={$t('settings.add_segment')}
     aria-label={$t('settings.add_segment')}

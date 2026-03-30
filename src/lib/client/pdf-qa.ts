@@ -1,9 +1,8 @@
 import type * as PdfjsLibTypes from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import {buildSnippet, buildPageText} from '$lib/pdf/text-utils';
-import type {ChapterSourceFormat, QaChapterReference, QaScope} from '$lib/types/pdf-qa';
-import type {BrowserAiConfig, BrowserVisionMessage} from '$lib/client/ai';
-import {answerPdfQuestionInBrowser} from '$lib/client/ai';
+import type {BrowserAiConfig, BrowserVisionMessage} from '$lib/client/ai-config';
+import type {ChapterSourceFormat, QaAttachment, QaChapterReference, QaScope} from '$lib/types/pdf-qa';
 
 export interface LocalQaPageText {
   page: number;
@@ -65,7 +64,7 @@ export function buildChapterContextInBrowser(
   return `${'#'.repeat(headingLevel)} ${chapter.title}\n\nPath: ${chapter.path.join(' > ')}\nPages: ${chapter.startPage}-${chapter.endPage}\n\n${pageText.map((page) => `## Page ${page.page}\n${page.text}`).join('\n\n')}`.trim();
 }
 
-function selectPagesFromScope(scope: QaScope, pages: LocalQaPageText[]): LocalQaPageText[] {
+export function selectPagesFromScope(scope: QaScope, pages: LocalQaPageText[]): LocalQaPageText[] {
   if (scope.mode === 'current-page') {
     return pages.filter((page) => page.page === scope.page);
   }
@@ -87,6 +86,7 @@ export async function askLocalPdfQuestion(options: {
   pages: LocalQaPageText[];
   config: BrowserAiConfig;
   getPageImage: (pageNumber: number) => Promise<string>;
+  userImages?: QaAttachment[];
 }): Promise<{answer: string; citations: Array<{page: number; snippet: string}>; provider: string}> {
   const selectedPages = selectPagesFromScope(options.scope, options.pages);
   const citationPages = selectedPages.map((page) => page.page);
@@ -107,11 +107,17 @@ export async function askLocalPdfQuestion(options: {
     })),
   );
 
+  const uploadedImages: BrowserVisionMessage[] = (options.userImages || []).map((image, index) => ({
+    page: -(index + 1),
+    imageDataUrl: image.dataUrl,
+  }));
+
+  const {answerPdfQuestionInBrowser} = await import('$lib/client/ai');
   const result = await answerPdfQuestionInBrowser({
     question: options.question,
     citations: citationPages,
     textContext,
-    images,
+    images: [...images, ...uploadedImages],
     config: options.config,
   });
 

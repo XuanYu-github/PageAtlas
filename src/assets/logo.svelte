@@ -1,13 +1,17 @@
 <svg
-  width="32"
-  height="32"
-  viewBox="0 0 64 64"
+  width="28"
+  height="28"
+  viewBox="0 0 28 28"
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
+  style="image-rendering: pixelated; shape-rendering: crispEdges;"
 >
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="#F8EFD8" stroke="black" stroke-width="4" />
-  <path d="M42 4H50C55.5228 4 60 8.47715 60 14V22L42 4Z" fill="#F6C744" stroke="black" stroke-width="4" stroke-linejoin="round" />
-  <path d="M18 46V18H31C37.0751 18 42 22.9249 42 29C42 35.0751 37.0751 40 31 40H24" stroke="black" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M34 46L40 31L46 46" stroke="black" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M36.5 39.5H43.5" stroke="black" stroke-width="5" stroke-linecap="round" />
+  <rect x="2" y="4" width="24" height="20" fill="#F3BF35" stroke="#4D2D17" stroke-width="2" />
+  <rect x="4" y="6" width="20" height="16" fill="#FFD76A" />
+  <rect x="4" y="6" width="20" height="4" fill="#FFF0A6" />
+  <rect x="6" y="12" width="4" height="8" fill="#4D2D17" />
+  <rect x="10" y="12" width="4" height="4" fill="#4D2D17" />
+  <rect x="14" y="16" width="4" height="4" fill="#4D2D17" />
+  <rect x="18" y="12" width="4" height="8" fill="#4D2D17" />
+  <rect x="16" y="10" width="2" height="2" fill="#4D2D17" />
 </svg>

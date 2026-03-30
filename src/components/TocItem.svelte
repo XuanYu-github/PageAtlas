@@ -1,5 +1,4 @@
 <script lang="ts">
-  import {ChevronRight, ChevronDown, Plus, Trash, GripVertical} from 'lucide-svelte';
   import ShortUniqueId from 'short-unique-id';
   import {maxPage, tocConfig, dragDisabled} from '../stores';
   import {createEventDispatcher} from 'svelte';
@@ -7,6 +6,8 @@
   import {dndzone} from 'svelte-dnd-action';
   import {flip} from 'svelte/animate';
   import type { TocItem } from '$lib/pdf/service';
+  import PixelIcon from './icons/PixelIcon.svelte';
+  import {iconChevronDown, iconChevronRight, iconGrip, iconPlus, iconTrash} from './icons';
 
   export let item: TocItem;
   export let onUpdate: (item: TocItem, updates: Partial<TocItem>, skipHistory?: boolean) => void;
@@ -160,10 +161,10 @@
 {#if item}
   <div>
     <div
-      class="flex items-center gap-1 py-1.5 rounded-md group -mr-1"
+      class="quest-row flex items-center gap-1 px-2 py-2 group -mr-1 mb-1"
       on:mouseenter={handleMouseEnter}
       role="presentation"
-      class:bg-blue-200={isActive}
+      class:is-active={isActive}
       class:font-bold={isActive}
     >
       <div 
@@ -173,26 +174,26 @@
         on:touchstart={() => ($dragDisabled = false)}
       >
         <div
-          class="cursor-grab active:cursor-grabbing text-gray-400 transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          class="farm-icon-button w-8 h-8 cursor-grab active:cursor-grabbing transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100"
         >
-          <GripVertical size={14} />
+          <PixelIcon size={14} pixels={iconGrip} />
         </div>
 
         <button
           on:click|stopPropagation={handleToggle}
-          class=" hover:bg-gray-200 rounded-md text-gray-500 ml-[-4px]"
+          class="farm-icon-button w-8 h-8 ml-[-4px]"
           class:invisible={!item.children || item.children.length === 0}
           title="Toggle"
         >
           {#if item.open}
-            <ChevronDown size={16} />
+            <PixelIcon size={16} pixels={iconChevronDown} />
           {:else}
-            <ChevronRight size={16} />
+            <PixelIcon size={16} pixels={iconChevronRight} />
           {/if}
         </button>
 
         {#if $tocConfig.prefixSettings.enabled}
-          <span class="text-xs text-gray-600 font-mono select-none pr-1">
+          <span class="farm-badge text-xs select-none pr-1 min-w-[3rem] justify-center">
             {currentNumber}
           </span>
         {/if}
@@ -208,7 +209,7 @@
           on:keydown={handleTitleKeydown}
           on:keypress={(e) => e.key === 'Enter' && (e.target as HTMLElement).blur()}
           placeholder={prefix === '' ? $t('toc.new_chapter_default') : ($t('toc.new_item_default') || 'New Item')}
-          class="toc-item-title border-2 border-black rounded px-2 py-1 text-sm myfocus focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1 min-w-[100px] placeholder:text-gray-400 "
+          class="toc-item-title inventory-slot px-2 py-1 text-sm myfocus focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1 min-w-[100px] placeholder:text-[color:var(--pa-ink-soft)]"
         />
       </div>
 
@@ -223,30 +224,30 @@
           handleUpdatePage();
         }}
         on:keypress={(e) => e.key === 'Enter' && (e.target as HTMLElement).blur()}
-        class="w-14 border-2 border-black rounded ml-1 pl-1.5 py-1 text-sm myfocus focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="inventory-slot w-14 ml-1 pl-1.5 py-1 text-sm myfocus focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
 
       <div class="flex">
         <button
           on:click={handleAddChild}
-          class="p-1 hover:bg-gray-200 rounded-md"
+          class="farm-icon-button w-8 h-8"
           title="Add Child"
         >
-          <Plus size={16} />
+          <PixelIcon size={16} pixels={iconPlus} />
         </button>
         <button
           on:click={() => onDelete(item)}
-          class="px-1 hover:bg-gray-200 rounded-md text-black"
+          class="farm-icon-button w-8 h-8 text-[color:var(--pa-berry)]"
           title="Delete"
         >
-          <Trash size={16} />
+          <PixelIcon size={16} pixels={iconTrash} />
         </button>
       </div>
     </div>
 
     {#if item.open}
       <div
-        class="ml-6 pl-2 border-transparent hover:border-gray-200 transition-colors"
+        class="ml-6 pl-3 border-l-[3px] border-[color:rgba(77,45,23,0.26)] hover:border-[color:var(--pa-bark)] transition-colors"
         use:dndzone={{
           items: item.children || [],
           flipDurationMs,

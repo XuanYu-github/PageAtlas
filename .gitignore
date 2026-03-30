@@ -22,6 +22,14 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-src-tauri
+src-tauri/target
+src-tauri/gen
+tauri-dev.out.log
+tauri-dev.err.log
 
 .gemini
+
+# Generated icon source assets (only keep the PNGs in src-tauri/icons/)
+Gemini_Generated_Image_*.png
+pageatlas_8bit_rpg_*.svg
+landscape_pixel_art.svg

@@ -1,7 +1,9 @@
 <script lang="ts">
   import {base} from '$app/paths';
   import {fade, fly} from 'svelte/transition';
-  import {X, Send} from 'lucide-svelte';
+  import {t} from 'svelte-i18n';
+  import PixelIcon from '../icons/PixelIcon.svelte';
+  import {iconClose, iconSend} from '../icons';
 
   export let showHelpModal: boolean;
 
@@ -21,43 +23,34 @@
 
 {#if showHelpModal}
   <div
-    class="fixed inset-0 bg-lime-400 flex items-center justify-center z-50 p-4"
+    class="fixed inset-0 bg-[rgba(57,35,22,0.58)] backdrop-blur-[2px] flex items-center justify-center z-50 p-4"
     transition:fade={{duration: 150}}
     role="button"
     tabindex="0"
-    aria-label="Close help dialog"
+    aria-label={$t('help_modal.close')}
     on:click|self={() => (showHelpModal = false)}
     on:keydown={(e) => (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') && (showHelpModal = false)}
   >
     <div
-      class="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)]"
+      class="panel-paper pixel-reading-surface p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto"
       transition:fly={{y: 20, duration: 200}}
     >
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div class="flex flex-wrap items-center gap-4">
-          <h2 class="text-2xl font-black italic">How to Use PageAtlas</h2>
+          <h2 class="text-[20px] md:text-[24px]">{$t('help_modal.title')}</h2>
 
-          <span class=" font-bold border-l-2 border-black pl-4 ml-1 hidden sm:inline-block">
-            Feedback
-            <Send
-              size={18}
-              class="inline-block font-bold mr-1"
-            />
+          <span class="font-pixel-ui font-bold border-l-2 border-black pl-4 ml-1 hidden sm:inline-block">
+            {$t('help_modal.feedback')}
+            <PixelIcon size={18} pixels={iconSend} class="inline-block font-bold mr-1" />
           </span>
 
           <button
             on:click={copyEmail}
-            class=" relative overflow-hidden group flex items-center gap-2 px-3 py-1.5
-              text-xs font-bold uppercase tracking-wider
-              border-2 border-black rounded-md
-              {copied
-              ? 'bg-lime-400 text-black border-black cursor-default'
-              : 'bg-white text-black hover:bg-yellow-400 hover:text-black active:scale-95'}
-            "
-            title="Click to copy email"
+            class={`btn text-xs ${copied ? 'farm-btn-secondary cursor-default' : ''}`}
+            title={$t('help_modal.copy_email')}
           >
             {#if copied}
-              <span>COPIED!</span>
+              <span>{$t('help_modal.copied')}</span>
             {:else}
               <span>{email}</span>
             {/if}
@@ -66,13 +59,10 @@
 
         <button
           on:click={() => (showHelpModal = false)}
-          class="absolute top-4 right-4 md:relative md:top-auto md:right-auto p-2 border-2 border-transparent hover:border-black rounded hover:bg-gray-100 transition-all"
-          aria-label="Close modal"
+          class="absolute top-4 right-4 md:relative md:top-auto md:right-auto farm-icon-button"
+          aria-label={$t('help_modal.close_button')}
         >
-          <X
-            size={24}
-            strokeWidth={3}
-          />
+          <PixelIcon size={18} pixels={iconClose} />
         </button>
       </div>
 
@@ -83,7 +73,7 @@
           loop
           autoplay
           muted
-          class="w-full h-auto rounded-md"
+          class="w-full h-auto border-[4px] border-[color:var(--pa-bark)] shadow-[var(--pa-shadow-pixel)]"
         ></video>
       </div>
     </div>
