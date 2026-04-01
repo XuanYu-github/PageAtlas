@@ -1,5 +1,5 @@
 [package]
-name = "pageatlas-lite"
+name = "pageatlas"
 version = "0.1.0"
 description = "PageAtlas desktop app"
 authors = ["PageAtlas Contributors"]
