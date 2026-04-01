@@ -1,162 +1,139 @@
-# PageAtlas Lite
+# PageAtlas
 
 > [English](./README.en.md)
 
-纯浏览器 PDF 结构编辑与理解工作区，可部署于 GitHub Pages。
+PageAtlas 是一个本地优先的 PDF 工作台：在同一个界面里完成目录整理、页级/章节级问答、多模态阅读和知识图谱生成。
 
-`PageAtlas Lite` 是一个 GPLv3 协议的静态 SvelteKit 应用，所有 PDF 操作均在浏览器内完成：
+当前仓库已经不是“纯静态无后端”的状态，而是双形态架构：
 
-- 本地查看与编辑 PDF 书签 / 目录（ToC）
-- 通过自带 API Key 的 AI，从页面图像或粘贴的纯文本生成目录
-- 基于页级和章节级引用进行 PDF 问答
-- 从当前目录大纲生成知识图谱
-- 导出更新后的 PDF，无需将文件发送到自定义后端
-
-本仓库是在 Tocify 基础上大幅修改的衍生版本，重构为静态 GitHub Pages 应用，AI 调用完全在浏览器端完成，无后端服务。
+- `Web 模式`：静态 SvelteKit 应用（GitHub Pages）
+- `Desktop 模式`：Tauri 2 桌面壳 + 本地原生 AI 桥接（用于绕过部分浏览器 CORS 限制）
 
 ## 截图
 
 | 主工作区 | 文本目录格式化 |
 | --- | --- |
-| ![主工作区](./screenshots/basic.png) | ![文本格式化](./screenshots/text.gif) |
+| ![主工作区](./screenshots/basic.png) | ![文本目录格式化](./screenshots/text.gif) |
 
 | 样式编辑 |
 | --- |
 | ![样式编辑](./screenshots/style.png) |
 
-## 为什么选择 PageAtlas Lite
+## 核心能力
 
-与原始的服务端辅助流程不同，Lite 版本专为完全静态托管设计：
-
-- 无需自定义服务器
-- 无需 Redis / 后端缓存
-- 无需服务端 OCR 流水线
-- 运行时无需 API 路由
-- 使用你自己的 API Key 直接从浏览器调用模型
-
-这让它适用于 GitHub Pages 和其他静态主机，同时保留了完整的 PDF 工作流。
-
-## 功能概览
-
-| 模块 | 功能 |
+| 模块 | 说明 |
 | --- | --- |
-| PDF 预览 | 本地预览、导航、缩放、导出 |
-| 目录编辑 | 手动大纲编辑、拖拽层级、页码偏移、标签、前缀 |
-| AI 目录生成 | 将扫描的目录页或粘贴的纯文本解析为结构化大纲 |
-| PDF 问答 | 按当前页、选定页范围或当前章节提问 |
-| 多模态阅读 | 若页面无可提取文本，仍可通过附带的页面图片进行问答 |
-| 知识图谱 | 从当前目录构建关系图谱 |
-| BYOK 预设 | 本地保存、导入、导出、复用 OpenAI 兼容接口的预设 |
+| PDF 预览与编辑 | 本地加载、缩放/跳转、目录树编辑、导出更新后的 PDF |
+| AI 目录生成 | 从目录页图像或粘贴文本生成结构化 ToC |
+| PDF Q&A | 支持当前页、页范围、当前章节等问答作用域，并返回引用页 |
+| 多模态问答 | 对扫描页或无可提取文本页面，自动补充页面图像进行问答 |
+| Knowledge Board | 基于当前目录自动构建知识关系图 |
+| OpenAI 兼容预设 | 本地保存/导入/导出 Base URL + 模型配置，支持默认预设 |
+| Reasoning Effort | OpenAI 兼容接口支持 `none/low/medium/high/xhigh` |
 
-## 支持的 AI 提供商
+## 架构与运行模式
 
-所有 AI 功能均为 BYOK（自带密钥），在浏览器中运行。
+### 1) Web 模式（静态部署）
+
+- 前端：SvelteKit 2 + Svelte 5 + Vite 6
+- 部署：`@sveltejs/adapter-static`，GitHub Pages 基础路径 `/PageAtlas`
+- AI 请求：浏览器直连模型提供商（BYOK）
+
+### 2) Desktop 模式（本地原生桥接）
+
+- 框架：Tauri 2（`src-tauri/`）
+- 桌面桥接：`src-tauri/src/ai.rs`
+- 作用：对 OpenAI 兼容协议提供商走本地原生 HTTP，规避浏览器 CORS/预检限制
+- 边界：这是“本地后端桥接”，不是远程 SaaS 服务器
+
+## AI 提供商与路由策略
+
+支持提供商：
 
 - Gemini
 - Qwen
 - Zhipu
 - Doubao
-- OpenAI 兼容接口
+- OpenAI Compatible
 
-说明：
+路由说明：
 
-- API Key 存储在你自己设备的浏览器本地存储中。
-- OpenAI 兼容预设在本地保存 `名称`、`Base URL` 和模型名称。
-- 在 GitHub Pages 中是否可用取决于对应提供商或网关是否支持浏览器端 CORS。
+- `Web 模式`：全部由浏览器发起请求（受目标服务 CORS 策略影响）
+- `Desktop 模式`：
+  - Gemini 仍走浏览器侧调用
+  - Qwen / Zhipu / Doubao / OpenAI Compatible 可走 Tauri 本地桥接
 
-## Lite 架构
+## 隐私与数据
 
-PageAtlas Lite 将 PDF 文件保留在客户端，使用浏览器端的 AI 辅助模块。
+- PDF 文件处理以本地为主，不上传到项目自建远程服务
+- API Key 与 OpenAI 兼容预设保存在本地存储（localStorage）
+- 模型请求发送给你配置的第三方提供商
 
-- PDF 预览与编辑：浏览器本地
-- 目录生成：浏览器 -> 提供商
-- 问答：浏览器本地提取 + 浏览器 -> 提供商
-- 知识图谱：浏览器 -> 提供商
-- 导出 PDF：浏览器本地生成
+## 快速开始
 
-Lite 版本已移除所有 `src/routes/api/**` 运行时接口。
+### 环境要求
 
-## 开发
+- Node.js `22`（LTS，仓库内含 `.nvmrc` / `.node-version`）
+- pnpm `10+`
+- Desktop 开发需要 Rust 工具链与 Tauri 依赖
 
-安装依赖：
+### 安装
 
 ```bash
 pnpm install --frozen-lockfile
 ```
 
-启动开发服务器：
+### Web 开发与构建
 
 ```bash
 pnpm dev
-```
-
-类型检查：
-
-```bash
 pnpm check
-```
-
-构建静态输出：
-
-```bash
 pnpm build
-```
-
-预览生产构建：
-
-```bash
 pnpm preview
 ```
 
-## 桌面版开发
-
-桌面版使用 Tauri 2，支持 Windows、macOS 和 Ubuntu。
+### Desktop 开发与打包
 
 ```bash
 pnpm tauri:dev
+pnpm tauri:build
 ```
 
-## GitHub Pages 部署
+打包产物默认位于 `src-tauri/target/release/bundle/`。
 
-本仓库配置部署地址：
+## 发布与部署
 
-`https://xuanyu-github.github.io/PageAtlas/`
+### GitHub Pages（Web）
 
-项目使用：
-
-- `@sveltejs/adapter-static`
-- 基础路径 `/PageAtlas`
+- URL：`https://xuanyu-github.github.io/PageAtlas/`
 - 工作流：`.github/workflows/deploy-pages.yml`
+- 推送到 `main` 后自动构建并部署静态产物 `build/`
 
-### GitHub 仓库设置清单
+### Desktop（安装包）
 
-首次发布前，请在 GitHub 确认以下设置：
+当前 Tauri 配置目标（`src-tauri/tauri.conf.json`）：
 
-1. `Settings -> Pages -> Build and deployment -> Source` = `GitHub Actions`
-2. `Settings -> Actions -> General -> Workflow permissions` = `Read and write permissions`
-3. 默认分支为 `main`
-4. 仓库为公开，或你的 Pages 计划支持私有仓库发布
+- Windows: `nsis`（安装器 `.exe`）
+- macOS: `dmg`（`.dmg`）
 
-### 发布流程
+> 当前 Release 流水线先自动发布 Windows 安装包（`.exe`）；macOS / Linux 产物仍保留在 Tauri 配置里，后续补齐对应 CI 构建后再一起发布。
 
-推送到 `main` 后，GitHub Actions 会自动构建并将 `build/` 的内容部署到 Pages。
+## 关键目录
 
-## BYOK 使用建议
-
-为了获得最佳的 Lite 体验：
-
-- 优先选择支持浏览器 CORS 的提供商或网关
-- 对扫描页/纯图片页使用支持多模态的模型
-- 保存一份 OpenAI 兼容预设以便反复使用
-- 如果出现浏览器网络故障，逐个测试不同提供商
+- `src/routes/+page.svelte`：主工作区（目录、问答、图谱等流程入口）
+- `src/components/`：UI 组件（设置、面板、模态框、知识图谱）
+- `src/lib/client/ai.ts`：浏览器侧 AI 编排与诊断
+- `src/lib/client/ai-config.ts`：AI 配置与本地存储
+- `src/lib/client/pdf-qa.ts`：页文本提取与问答上下文构建
+- `src-tauri/src/ai.rs`：桌面本地 AI 请求桥接
+- `src-tauri/src/main.rs`：Tauri 命令与插件注册
 
 ## 当前限制
 
-- 无后端意味着没有服务端 OCR 任务、任务队列或服务端缓存
-- 大型 PDF 仍然占用较多内存，因为提取在浏览器中完成
-- 多模态问答是纯图片页的兜底方案；Lite 版没有独立的 OCR 持久化流水线
-- 部分提供商即使有有效 API Key，也可能因浏览器 CORS 限制而失败
+- Web 模式仍受提供商 CORS 策略约束
+- 大体积 PDF 依然会有较高本地内存占用
+- 桌面桥接当前不包含 Gemini 路由
 
 ## 许可证
 
-本项目仍为 GPLv3 协议。如果你分发修改版本，请保留所需的版权声明和许可证声明。
+本项目采用 GPLv3。分发修改版本时请保留版权与许可证声明。

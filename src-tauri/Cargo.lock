@@ -2383,7 +2383,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pageatlas-lite"
+name = "pageatlas"
 version = "0.1.0"
 dependencies = [
  "reqwest 0.12.28",
