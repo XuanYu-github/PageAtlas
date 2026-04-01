@@ -4,11 +4,11 @@ All notable changes to this project are documented here.
 
 ## v0.1.0 - 2026-03-21
 
-Initial public release of `PageAtlas Lite`.
+Initial public release of `PageAtlas`.
 
 ### Highlights
 
-- Rebranded the project from `Tocify` to `PageAtlas Lite`
+- Rebranded the project from `Tocify` to `PageAtlas`
 - Rebuilt the app as a fully static, browser-only PDF workspace for GitHub Pages
 - Switched AI features to BYOK browser-direct provider calls
 - Added grounded page-level and chapter-level PDF Q&A
@@ -21,7 +21,7 @@ Initial public release of `PageAtlas Lite`.
 - Local PDF page-text extraction helpers for question answering
 - Multimodal fallback for image-only pages during PDF Q&A
 - GitHub Pages deployment workflow for static publishing
-- Updated branding, logo, favicon, README, and agent guidance for `PageAtlas Lite`
+- Updated branding, logo, favicon, README, and agent guidance for `PageAtlas`
 
 ### Changed
 
@@ -34,7 +34,7 @@ Initial public release of `PageAtlas Lite`.
 
 ### Removed
 
-- Removed all runtime `src/routes/api/**` endpoints from the Lite build path
+- Removed all runtime `src/routes/api/**` endpoints from the browser-only build path
 - Removed server-only document indexing, OCR jobs, chapter cache, and rate limiting
 - Removed Redis and other backend-only dependencies
 - Removed old client-app promo UI and stale verification files
@@ -47,7 +47,7 @@ Initial public release of `PageAtlas Lite`.
 
 ### Limitations
 
-- This Lite release has no backend services
+- This release has no backend services
 - Provider CORS support is required for browser-side AI access
 - Large PDFs can still be memory-intensive because extraction happens in-browser
 - Image-only pages rely on multimodal model input during Q&A instead of a standalone OCR pipeline

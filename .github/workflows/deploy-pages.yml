@@ -1,4 +1,4 @@
-name: Deploy PageAtlas Lite
+name: Deploy PageAtlas
 
 on:
   push:

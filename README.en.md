@@ -1,16 +1,13 @@
-# PageAtlas Lite
+# PageAtlas
 
-Browser-only PDF structure and understanding workspace for GitHub Pages.
+> [中文](./README.md)
 
-`PageAtlas Lite` is a GPLv3, static SvelteKit app for working with PDFs entirely in the browser:
+PageAtlas is a local-first PDF workspace for building outlines, asking grounded questions, reading scanned pages with multimodal models, and generating a knowledge board from the document structure.
 
-- inspect and edit PDF bookmarks / ToC locally
-- generate ToCs from page images or pasted raw text with BYOK AI
-- ask grounded page-level and chapter-level questions with citations
-- explore a knowledge-board graph generated from the current outline
-- export an updated PDF without sending the file to a custom backend
+The repository now ships in two modes:
 
-This repository is a substantially modified derivative of Tocify, rebuilt as a static GitHub Pages app with browser-side AI calls and no backend services.
+- `Web mode`: a static SvelteKit app for GitHub Pages
+- `Desktop mode`: a Tauri 2 shell with a local native AI bridge for providers that are blocked by browser CORS
 
 ## Screenshots
 
@@ -22,131 +19,121 @@ This repository is a substantially modified derivative of Tocify, rebuilt as a s
 | --- |
 | ![Style editing](./screenshots/style.png) |
 
-## Why PageAtlas Lite
-
-Unlike the original server-assisted workflow, this Lite edition is designed for fully static hosting:
-
-- no custom server
-- no Redis / backend cache
-- no server-side OCR pipeline
-- no API routes required at runtime
-- direct browser-to-model calls using your own key
-
-That makes it suitable for GitHub Pages and other static hosts, while still keeping advanced PDF workflows available.
-
-## Feature Overview
+## Core Capabilities
 
 | Area | What it does |
 | --- | --- |
-| PDF Preview | Local preview, navigation, scale, and export |
-| ToC Editing | Manual outline editing, drag-and-drop hierarchy, page offsets, labels, prefixes |
+| PDF Preview and Editing | Local preview, navigation, zoom, outline editing, and PDF export |
 | AI ToC Generation | Parse scanned ToC pages or pasted raw text into structured outline data |
-| PDF Q&A | Ask by current page, selected page ranges, or current chapter |
-| Multimodal Reading | If a page has no extractable text, Lite can still query it through attached page images |
-| Knowledge Board | Build a relationship graph from the current ToC |
-| BYOK Presets | Save, import, export, and reuse OpenAI-compatible provider presets locally |
+| PDF Q&A | Ask by current page, page range, or current chapter with citations |
+| Multimodal Reading | Use page images when a page has no extractable text |
+| Knowledge Board | Build a relationship graph from the current outline |
+| OpenAI-Compatible Presets | Save, import, export, and reuse local gateway presets |
+| Reasoning Effort | Supports `none`, `low`, `medium`, `high`, and `xhigh` for OpenAI-compatible providers |
 
-## Supported AI Providers
+## Architecture
 
-All AI features are BYOK and run in the browser.
+### Web mode
+
+- SvelteKit 2 + Svelte 5 + Vite 6
+- Static adapter deployment to GitHub Pages under `/PageAtlas`
+- Browser-side BYOK requests to model providers
+
+### Desktop mode
+
+- Tauri 2 app in `src-tauri/`
+- Local bridge in `src-tauri/src/ai.rs`
+- Used to route OpenAI-compatible providers through native HTTP and avoid browser CORS / preflight issues
+
+## AI Providers
+
+Supported providers:
 
 - Gemini
 - Qwen
 - Zhipu
 - Doubao
-- OpenAI-compatible endpoints
+- OpenAI Compatible
 
-Notes:
+Routing summary:
 
-- Your API key is stored in browser storage on your own machine.
-- OpenAI-compatible presets store `name`, `baseURL`, and model names locally.
-- Whether a provider works in GitHub Pages depends on browser-side CORS support from that provider or gateway.
+- Web mode: all requests come from the browser
+- Desktop mode:
+  - Gemini stays on the browser path
+  - Qwen / Zhipu / Doubao / OpenAI Compatible can use the local bridge
 
-## Lite Architecture
+## Privacy and Data
 
-PageAtlas Lite keeps the PDF file on the client side and uses browser-side AI helpers.
+- PDFs are processed locally first; there is no project-owned remote backend
+- API keys and OpenAI-compatible presets are stored in localStorage
+- Model requests are sent only to the provider or gateway you configure
 
-- PDF preview and editing: browser local
-- ToC generation: browser -> provider
-- Q&A: browser local extraction + browser -> provider
-- Knowledge board: browser -> provider
-- Exported PDF: generated locally in browser
+## Quick Start
 
-There is no runtime dependency on `src/routes/api/**` because those routes have been removed from Lite.
+### Requirements
 
-## Development
+- Node.js `22` LTS
+- pnpm `10+`
+- Rust toolchain for desktop development
 
-Install:
+### Install
 
 ```bash
 pnpm install --frozen-lockfile
 ```
 
-Run dev server:
+### Web development
 
 ```bash
 pnpm dev
-```
-
-Type-check:
-
-```bash
 pnpm check
-```
-
-Build static output:
-
-```bash
 pnpm build
-```
-
-Preview production build:
-
-```bash
 pnpm preview
 ```
 
-## GitHub Pages Deployment
+### Desktop development and packaging
 
-This repo is configured for deployment at:
+```bash
+pnpm tauri:dev
+pnpm tauri:build
+```
 
-`https://xuanyu-github.github.io/PageAtlas/`
+Build outputs are written to `src-tauri/target/release/bundle/`.
 
-The project uses:
+## Release and Deployment
 
-- `@sveltejs/adapter-static`
-- base path `/PageAtlas`
-- workflow: `.github/workflows/deploy-pages.yml`
+### GitHub Pages
 
-### GitHub repository settings checklist
+- URL: `https://xuanyu-github.github.io/PageAtlas/`
+- Workflow: `.github/workflows/deploy-pages.yml`
+- Pushes to `main` automatically build and deploy the static site in `build/`
 
-Before first release, confirm these repository settings in GitHub:
+### Desktop installers
 
-1. `Settings -> Pages -> Build and deployment -> Source` = `GitHub Actions`
-2. `Settings -> Actions -> General -> Workflow permissions` = `Read and write permissions`
-3. Default branch is `main`
-4. The repository is public, or your Pages plan supports private repo publishing
+The current Tauri bundle targets are:
 
-### Publish flow
+- Windows: `nsis` (`.exe` installer)
+- Linux: `appimage` (`.AppImage`)
+- macOS: `dmg` (`.dmg`)
 
-Push to `main` and GitHub Actions will build and deploy the contents of `build/` to Pages.
+> GitHub Releases are configured: pushing a `v*` tag publishes the installers automatically, and the workflow can also be run manually with a tag input.
 
-## BYOK Setup Tips
+## Key Paths
 
-For the smoothest Lite experience:
+- `src/routes/+page.svelte`: main app workflow
+- `src/components/`: settings, panels, dialogs, and graph UI
+- `src/lib/client/ai.ts`: browser-side AI orchestration and diagnostics
+- `src/lib/client/ai-config.ts`: AI config and local storage helpers
+- `src/lib/client/pdf-qa.ts`: page-text extraction and Q&A context building
+- `src-tauri/src/ai.rs`: desktop AI bridge
+- `src-tauri/src/main.rs`: Tauri command and plugin setup
 
-- prefer providers or gateways that allow browser CORS
-- use multimodal-capable models for scanned/image-only pages
-- keep a saved OpenAI-compatible preset for repeated use
-- test one provider at a time if you see browser network failures
+## Current Limits
 
-## Current Limitations
-
-- No backend means no server-side OCR jobs, task queues, or server caching
-- Large PDFs are still memory-intensive because extraction happens in-browser
-- Multimodal Q&A is the fallback for image-only pages; there is no separate OCR persistence pipeline in Lite
-- Some providers may fail in-browser due to CORS even with a valid API key
+- Web mode still depends on provider CORS support
+- Large PDFs can still be memory-heavy during local extraction
+- The desktop bridge currently does not route Gemini
 
 ## License
 
-This project remains GPLv3. If you redistribute modified versions, preserve the required copyright and license notices.
+GPLv3. If you redistribute modified versions, keep the required copyright and license notices.
