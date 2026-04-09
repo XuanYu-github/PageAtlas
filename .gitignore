@@ -32,7 +32,7 @@ tauri-dev.err.log
 # Generated icon source assets (only keep the PNGs in src-tauri/icons/)
 Gemini_Generated_Image_*.png
 pageatlas_8bit_rpg_*.svg
-landscape_pixel_art.svg
+/landscape_pixel_art.svg
 
 # Local agent instructions
 AGENTS.md
