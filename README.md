@@ -116,7 +116,7 @@ pnpm tauri:build
 - Windows: `nsis`（安装器 `.exe`）
 - macOS: `dmg`（`.dmg`）
 
-> 当前 Release 流水线先自动发布 Windows 版本（包含安装版 setup 与免安装版 `PageAtlas_0.1.0_x64-portable.exe`）；macOS / Linux 产物仍保留在 Tauri 配置里，后续补齐对应 CI 构建后再一起发布。
+> 当前 Release 流水线先自动发布 Windows 版本（包含安装版 setup 与免安装版 `PageAtlas_0.1.0_x64-portable.exe`）；macOS / Linux 产物仍保留在 Tauri 配置里，后续补齐对应 CI 构建后再一起发布。桌面背景图以仓库中的 `static/pixel-landscape.svg` 为准。
 
 ## 关键目录
 

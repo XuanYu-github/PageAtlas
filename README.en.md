@@ -115,7 +115,7 @@ The current Tauri bundle targets are:
 - Windows: `nsis` (`.exe` installer)
 - macOS: `dmg` (`.dmg`)
 
-> The current release pipeline first publishes Windows artifacts (setup installer plus portable `PageAtlas_0.1.0_x64-portable.exe`); macOS and Linux outputs are still configured in Tauri and can be added back after their CI builds are stabilized.
+> The current release pipeline first publishes Windows artifacts (setup installer plus portable `PageAtlas_0.1.0_x64-portable.exe`); macOS and Linux outputs are still configured in Tauri and can be added back after their CI builds are stabilized. The desktop background image is sourced from `static/pixel-landscape.svg`.
 
 ## Key Paths
 

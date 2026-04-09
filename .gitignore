@@ -33,6 +33,7 @@ tauri-dev.err.log
 Gemini_Generated_Image_*.png
 pageatlas_8bit_rpg_*.svg
 /landscape_pixel_art.svg
+/static/landscape_pixel_art.svg
 
 # Local agent instructions
 AGENTS.md

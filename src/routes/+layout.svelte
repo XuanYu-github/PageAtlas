@@ -12,7 +12,7 @@
   let isDesktopShell = $state(false);
   let showBackgroundOnly = $state(false);
   let isKnowledgeBoardFullscreen = $state(false);
-  const landscapeUrl = `${base}/landscape_pixel_art.svg`;
+  const landscapeUrl = `${base}/pixel-landscape.svg`;
 
   onMount(() => {
     isDesktopShell = '__TAURI_INTERNALS__' in window;
