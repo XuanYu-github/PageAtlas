@@ -413,6 +413,9 @@
     "tmp_page_export_failed": "导出页面失败：{msg}",
     "tmp_page_cleanup_failed": "清理 tmppage 文件夹失败：{msg}",
     "tmp_page_no_dir": "尚未选择 tmppage 目录。请先导出页面。"
+    ,
+    "generating_images": "正在生成 {n} 页图片...",
+    "exporting_images": "正在导出 {n} 页图片..."
   },
   "manual_toc": {
     "title": "粘贴 AI 回答",

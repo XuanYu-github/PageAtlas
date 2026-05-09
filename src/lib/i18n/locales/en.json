@@ -412,6 +412,9 @@
     "tmp_page_export_failed": "Failed to export pages: {msg}",
     "tmp_page_cleanup_failed": "Failed to clean up tmppage folder: {msg}",
     "tmp_page_no_dir": "No tmppage directory selected yet. Export pages first."
+    ,
+    "generating_images": "Generating images for {n} page(s)...",
+    "exporting_images": "Exporting {n} page(s)..."
   },
   "manual_toc": {
     "title": "Paste AI Answer",

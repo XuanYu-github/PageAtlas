@@ -1167,7 +1167,7 @@
         return;
       }
 
-      toastProps = {show: true, message: `Generating images for ${pages.length} page(s)...`, type: 'info', duration: 2000};
+      toastProps = {show: true, message: $t('toast.generating_images', {values: {n: pages.length}}), type: 'info', duration: 2000};
 
       const images: {dataUrl: string; blob: Blob}[] = [];
       for (const pageNum of pages) {
@@ -1333,7 +1333,7 @@
         return;
       }
 
-      toastProps = {show: true, message: `Exporting ${pages.length} page(s)...`, type: 'info', duration: 2000};
+      toastProps = {show: true, message: $t('toast.exporting_images', {values: {n: pages.length}}), type: 'info', duration: 2000};
 
       for (let i = 0; i < pages.length; i++) {
         const pageNum = pages[i];
