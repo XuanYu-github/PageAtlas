@@ -16,6 +16,8 @@
   import {buildQaChapterReferences, findCurrentQaChapter} from '$lib/utils/chapter-qa';
   import {buildTree, convertPdfJsOutlineToTocItems, setNestedValue, findActiveTocPath, cleanTocItems} from '$lib/utils';
   import {generateToc} from '$lib/toc-service';
+  import {SYSTEM_PROMPT_VISION, normalizeToc} from '$lib/utils/toc';
+  import {jsonrepair} from 'jsonrepair';
   import {applyCustomPrefix} from '$lib/utils/prefix';
   import {setPageLabels} from '$lib/pdf/page-labels';
   import {createBrowserAiConfig, loadBrowserAiConfigFromStorage} from '$lib/client/ai-config';
@@ -23,6 +25,8 @@
   import Toast from '../components/Toast.svelte';
   import AiLoadingModal from '../components/modals/AiLoadingModal.svelte';
   import OffsetModal from '../components/modals/OffsetModal.svelte';
+  import PasteTocModal from '../components/modals/PasteTocModal.svelte';
+  import TocDiffModal from '../components/modals/TocDiffModal.svelte';
   import HelpModal from '../components/modals/HelpModal.svelte';
   import StarRequestModal from '../components/modals/StarRequestModal.svelte';
 
@@ -62,6 +66,8 @@
   let isGraphEntranceVisible = true;
 
   let showOffsetModal = false;
+  let showPasteTocModal = false;
+  let showTocDiffModal = false;
   let showHelpModal = false;
   let showStarRequestModal = false;
   let offsetPreviewPageNum = 1;
@@ -92,6 +98,17 @@
   };
 
   let tocRanges = [{start: 1, end: 1, id: 'default'}];
+  let lastTocRangesFingerprint = '';
+  $: {
+    const fingerprint = JSON.stringify(tocRanges);
+    if (fingerprint !== lastTocRangesFingerprint) {
+      lastTocRangesFingerprint = fingerprint;
+      if (manualTocPages.length > 0) {
+        manualTocPages = [];
+        manualTocCopyIndex = 0;
+      }
+    }
+  }
   let activeRangeIndex = 0;
   let activeSidebarMode: 'toc' | 'qa' | 'api' = 'toc';
   let tocPageCount = 0;
@@ -101,6 +118,13 @@
   let firstTocItem: TocItem | null = null;
   let aiError: string | null = null;
   let config: TocConfig;
+
+  let manualTocPages: number[] = [];
+  let manualTocCopyIndex = 0;
+  let isManualCopying = false;
+  let tmpPageDirHandle: FileSystemDirectoryHandle | null = null;
+  let oldTocSnapshot: TocItem[] = [];
+  let diffRows: {oldText: string | null; newText: string | null; oldPage: number | null; newPage: number | null}[] = [];
 
   let lastPdfContentJson = '';
   let lastInsertAtPage = 2;
@@ -970,15 +994,18 @@
       pendingTocItems.unshift(rootNode);
     }
 
-    if (tocEditor) tocEditor.saveHistory();
-    tocItems.set(pendingTocItems);
-    showOffsetModal = false;
-    pendingTocItems = [];
-    firstTocItem = null;
-
-    if (!isPreviewMode) {
-      await togglePreviewMode();
+    const currentItems = get(tocItems);
+    if (currentItems.length > 0) {
+      oldTocSnapshot = currentItems;
+      const oldLines = flattenTocToLines(currentItems);
+      const newLines = flattenTocToLines(pendingTocItems);
+      diffRows = computeSideBySideDiff(oldLines, newLines);
+      showOffsetModal = false;
+      showTocDiffModal = true;
+      return;
     }
+
+    applyPendingToc();
   };
 
   const handleOffsetSkip = () => {
@@ -991,6 +1018,455 @@
         tocItems.set([]);
       }
     }
+  };
+
+  const applyPendingToc = async () => {
+    if (tocEditor) tocEditor.saveHistory();
+    tocItems.set(pendingTocItems);
+    pendingTocItems = [];
+    firstTocItem = null;
+
+    cleanupTmpPageDir();
+
+    if (!isPreviewMode) {
+      await togglePreviewMode();
+    }
+  };
+
+  const handleDiffOverwrite = async () => {
+    showTocDiffModal = false;
+    oldTocSnapshot = [];
+    diffRows = [];
+    await applyPendingToc();
+  };
+
+  const handleDiffReimport = () => {
+    showTocDiffModal = false;
+    oldTocSnapshot = [];
+    diffRows = [];
+    showOffsetModal = false;
+    showPasteTocModal = true;
+  };
+
+  async function dataUrlToPngBlob(dataUrl: string, maxDim = 1600): Promise<Blob> {
+    const response = await fetch(dataUrl);
+    const jpegBlob = await response.blob();
+    const bitmap = await createImageBitmap(jpegBlob);
+    let w = bitmap.width;
+    let h = bitmap.height;
+    if (Math.max(w, h) > maxDim) {
+      const ratio = maxDim / Math.max(w, h);
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas context failed');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error('canvas.toBlob returned null'));
+      }, 'image/png');
+    });
+  }
+
+  function flattenTocRangesToPages(ranges: {start: number; end: number}[]): number[] {
+    const pages: number[] = [];
+    for (const range of ranges) {
+      if (range.end < range.start) continue;
+      for (let p = range.start; p <= range.end; p++) {
+        if (!pages.includes(p)) pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  interface FlatTocLine {
+    text: string;
+    page: number;
+  }
+
+  function flattenTocToLines(items: TocItem[], prefix = '', depth = 0): FlatTocLine[] {
+    const lines: FlatTocLine[] = [];
+    items.forEach((item, index) => {
+      const number = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
+      const indent = '  '.repeat(depth);
+      const title = item.title || '(no title)';
+      const page = item.to || 1;
+      lines.push({text: `${indent}${number} ${title}`, page});
+      if (item.children && item.children.length > 0) {
+        lines.push(...flattenTocToLines(item.children, number, depth + 1));
+      }
+    });
+    return lines;
+  }
+
+  function computeSideBySideDiff(oldLines: FlatTocLine[], newLines: FlatTocLine[]) {
+    const rows: {oldText: string | null; newText: string | null; oldPage: number | null; newPage: number | null}[] = [];
+
+    const oldByPage = new Map<number, FlatTocLine[]>();
+    for (const line of oldLines) {
+      const arr = oldByPage.get(line.page) || [];
+      arr.push(line);
+      oldByPage.set(line.page, arr);
+    }
+
+    const newByPage = new Map<number, FlatTocLine[]>();
+    for (const line of newLines) {
+      const arr = newByPage.get(line.page) || [];
+      arr.push(line);
+      newByPage.set(line.page, arr);
+    }
+
+    const allPages = new Set([...oldByPage.keys(), ...newByPage.keys()]);
+    const sortedPages = [...allPages].sort((a, b) => a - b);
+
+    for (const page of sortedPages) {
+      const oldBucket = oldByPage.get(page) || [];
+      const newBucket = newByPage.get(page) || [];
+      const maxLen = Math.max(oldBucket.length, newBucket.length);
+
+      for (let k = 0; k < maxLen; k++) {
+        const oldEntry = k < oldBucket.length ? oldBucket[k] : null;
+        const newEntry = k < newBucket.length ? newBucket[k] : null;
+        rows.push({
+          oldText: oldEntry ? oldEntry.text : null,
+          newText: newEntry ? newEntry.text : null,
+          oldPage: oldEntry ? oldEntry.page : null,
+          newPage: newEntry ? newEntry.page : null,
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  const handleCopyTocImages = async () => {
+    if (!originalPdfInstance || !$pdfService) {
+      toastProps = {show: true, message: $t('toast.load_pdf_first'), type: 'error'};
+      return;
+    }
+
+    if (isManualCopying) return;
+
+    if (manualTocPages.length > 0 && manualTocCopyIndex < manualTocPages.length) {
+      await handleCopyNextImage();
+      return;
+    }
+
+    isManualCopying = true;
+    try {
+      const pages = flattenTocRangesToPages(tocRanges);
+      if (pages.length === 0) {
+        toastProps = {show: true, message: $t('toast.no_valid_pages'), type: 'error'};
+        return;
+      }
+
+      toastProps = {show: true, message: `Generating images for ${pages.length} page(s)...`, type: 'info', duration: 2000};
+
+      const images: {dataUrl: string; blob: Blob}[] = [];
+      for (const pageNum of pages) {
+        const dataUrl = await $pdfService.getPageAsImage(originalPdfInstance, pageNum);
+        const blob = await dataUrlToPngBlob(dataUrl);
+        images.push({dataUrl, blob});
+      }
+
+      try {
+        const items = images.map((img) => new ClipboardItem({'image/png': img.blob}));
+        await navigator.clipboard.write(items);
+        toastProps = {show: true, message: $t('toast.copied_all_pages', {values: {total: pages.length}}), type: 'success'};
+      } catch {
+        if (images.length === 0) return;
+
+        manualTocPages = pages;
+        manualTocCopyIndex = 0;
+
+        try {
+          await navigator.clipboard.write([new ClipboardItem({'image/png': images[0].blob})]);
+          manualTocCopyIndex = 1;
+
+          if (pages.length > 1) {
+            toastProps = {
+              show: true,
+              message: $t('toast.copied_pages', {values: {current: 1, total: pages.length}}),
+              type: 'success',
+            };
+          } else {
+            toastProps = {
+              show: true,
+              message: $t('toast.copied_all_pages', {values: {total: 1}}),
+              type: 'success',
+            };
+          }
+        } catch (e: any) {
+          console.error('Clipboard multi-write failed:', e);
+          toastProps = {show: true, message: $t('toast.clipboard_copy_failed'), type: 'error'};
+          manualTocPages = [];
+          manualTocCopyIndex = 0;
+        }
+      }
+    } catch (error: any) {
+      console.error('Clipboard copy images failed:', error);
+      toastProps = {show: true, message: error.message || $t('toast.clipboard_copy_failed'), type: 'error'};
+    } finally {
+      isManualCopying = false;
+    }
+  };
+
+  const handleCopyNextImage = async () => {
+    if (!originalPdfInstance || !$pdfService || manualTocPages.length === 0) return;
+    if (manualTocCopyIndex >= manualTocPages.length) {
+      manualTocPages = [];
+      manualTocCopyIndex = 0;
+      return;
+    }
+
+    if (isManualCopying) return;
+    isManualCopying = true;
+
+    try {
+      const pageNum = manualTocPages[manualTocCopyIndex];
+      const dataUrl = await $pdfService.getPageAsImage(originalPdfInstance, pageNum);
+      const blob = await dataUrlToPngBlob(dataUrl);
+
+      await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+      manualTocCopyIndex++;
+
+      if (manualTocCopyIndex >= manualTocPages.length) {
+        toastProps = {
+          show: true,
+          message: $t('toast.copied_all_pages', {values: {total: manualTocPages.length}}),
+          type: 'success',
+        };
+        manualTocPages = [];
+        manualTocCopyIndex = 0;
+      } else {
+        toastProps = {
+          show: true,
+          message: $t('toast.copied_pages', {values: {current: manualTocCopyIndex, total: manualTocPages.length}}),
+          type: 'success',
+        };
+      }
+    } catch (e: any) {
+      console.error('handleCopyNextImage failed:', e);
+      toastProps = {show: true, message: $t('toast.clipboard_copy_failed'), type: 'error'};
+    } finally {
+      isManualCopying = false;
+    }
+  };
+
+  const handleCopyTocImagesOneByOne = async () => {
+    if (!originalPdfInstance || !$pdfService) {
+      toastProps = {show: true, message: $t('toast.load_pdf_first'), type: 'error'};
+      return;
+    }
+
+    if (isManualCopying) return;
+
+    if (manualTocPages.length > 0 && manualTocCopyIndex < manualTocPages.length) {
+      await handleCopyNextImage();
+      return;
+    }
+
+    const pages = flattenTocRangesToPages(tocRanges);
+    if (pages.length === 0) {
+      toastProps = {show: true, message: $t('toast.no_valid_pages'), type: 'error'};
+      return;
+    }
+
+    manualTocPages = pages;
+    manualTocCopyIndex = 0;
+
+    isManualCopying = true;
+    try {
+      const pageNum = pages[0];
+      const dataUrl = await $pdfService.getPageAsImage(originalPdfInstance, pageNum);
+      const blob = await dataUrlToPngBlob(dataUrl);
+
+      await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+      manualTocCopyIndex = 1;
+
+      if (pages.length > 1) {
+        toastProps = {
+          show: true,
+          message: $t('toast.copied_pages', {values: {current: 1, total: pages.length}}),
+          type: 'success',
+        };
+      } else {
+        toastProps = {
+          show: true,
+          message: $t('toast.copied_all_pages', {values: {total: 1}}),
+          type: 'success',
+        };
+        manualTocPages = [];
+        manualTocCopyIndex = 0;
+      }
+    } catch (e: any) {
+      console.error('handleCopyTocImagesOneByOne failed:', e);
+      toastProps = {show: true, message: $t('toast.clipboard_copy_failed'), type: 'error'};
+      manualTocPages = [];
+      manualTocCopyIndex = 0;
+    } finally {
+      isManualCopying = false;
+    }
+  };
+
+  const handleExportTocImagesToTmpPage = async () => {
+    if (!originalPdfInstance || !$pdfService) {
+      toastProps = {show: true, message: $t('toast.load_pdf_first'), type: 'error'};
+      return;
+    }
+
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker();
+      const subDir = await dirHandle.getDirectoryHandle('tmppage', {create: true});
+      tmpPageDirHandle = subDir;
+
+      const pages = flattenTocRangesToPages(tocRanges);
+      if (pages.length === 0) {
+        toastProps = {show: true, message: $t('toast.no_valid_pages'), type: 'error'};
+        return;
+      }
+
+      toastProps = {show: true, message: `Exporting ${pages.length} page(s)...`, type: 'info', duration: 2000};
+
+      for (let i = 0; i < pages.length; i++) {
+        const pageNum = pages[i];
+        const dataUrl = await $pdfService.getPageAsImage(originalPdfInstance, pageNum);
+        const blob = await dataUrlToPngBlob(dataUrl);
+        const fileName = `page_${String(pageNum).padStart(4, '0')}.png`;
+        const fileHandle = await subDir.getFileHandle(fileName, {create: true});
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      }
+
+      toastProps = {
+        show: true,
+        message: $t('toast.tmp_page_exported', {values: {n: pages.length}}),
+        type: 'success',
+      };
+    } catch (error: any) {
+      if (error.name === 'AbortError') return;
+      console.error('tmp_page_export_failed:', error);
+      toastProps = {
+        show: true,
+        message: $t('toast.tmp_page_export_failed', {values: {msg: error.message || String(error)}}),
+        type: 'error',
+      };
+    }
+  };
+
+  async function cleanupTmpPageDir() {
+    if (!tmpPageDirHandle) return;
+    const dir = tmpPageDirHandle;
+    tmpPageDirHandle = null;
+
+    try {
+      for await (const [name] of (dir as any).entries()) {
+        await dir.removeEntry(name);
+      }
+    } catch (error: any) {
+      console.error('tmp_page_cleanup_failed:', error);
+      toastProps = {
+        show: true,
+        message: $t('toast.tmp_page_cleanup_failed', {values: {msg: error.message || String(error)}}),
+        type: 'error',
+      };
+    }
+  }
+
+  const handleCopyVisionPrompt = async () => {
+    const combinedPrompt = `Analyze these Table of Contents images and return the single structured JSON array.\n\n${SYSTEM_PROMPT_VISION}`;
+
+    try {
+      await navigator.clipboard.writeText(combinedPrompt);
+      toastProps = {show: true, message: $t('toast.copied_prompt'), type: 'success'};
+    } catch {
+      toastProps = {show: true, message: $t('toast.clipboard_copy_failed'), type: 'error'};
+    }
+  };
+
+  function parseTocJsonText(raw: string): {title: string; level: number; page: number}[] | null {
+    try {
+      let cleaned = raw.replace(/```json\n?|```/g, '').trim();
+      const firstBracket = cleaned.indexOf('[');
+      if (firstBracket !== -1) {
+        cleaned = cleaned.substring(firstBracket);
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        parsed = JSON.parse(jsonrepair(cleaned));
+      }
+
+      return normalizeToc(parsed as any[]);
+    } catch {
+      return null;
+    }
+  }
+
+  function startOffsetFlowFromTocItems(items: {title: string; level: number; page: number}[]) {
+    if (!items || items.length === 0) {
+      toastProps = {show: true, message: $t('toast.toc_import_no_items'), type: 'error'};
+      return;
+    }
+
+    const nestedTocItems = buildTree(items);
+    pendingTocItems = nestedTocItems;
+    firstTocItem = nestedTocItems.length > 0 ? nestedTocItems[0] : null;
+
+    if (firstTocItem) {
+      const lastTocPage = Math.max(...tocRanges.map((r) => r.end), firstTocItem.to);
+      offsetPreviewPageNum = Math.min(lastTocPage + 1, originalPdfInstance?.numPages || 1);
+      showOffsetModal = true;
+    } else {
+      if (tocEditor) tocEditor.saveHistory();
+      tocItems.set(nestedTocItems);
+      pendingTocItems = [];
+    }
+  }
+
+  const handlePasteTocJson = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        showPasteTocModal = true;
+        return;
+      }
+
+      const items = parseTocJsonText(text);
+      if (!items) {
+        showPasteTocModal = true;
+        return;
+      }
+
+      startOffsetFlowFromTocItems(items);
+      toastProps = {show: true, message: $t('toast.toc_imported'), type: 'success'};
+    } catch {
+      showPasteTocModal = true;
+    }
+  };
+
+  const handlePasteTocModalImport = (e: CustomEvent<{text: string}>) => {
+    const {text} = e.detail;
+    showPasteTocModal = false;
+
+    const items = parseTocJsonText(text);
+    if (!items) {
+      toastProps = {show: true, message: $t('toast.toc_import_failed'), type: 'error'};
+      return;
+    }
+
+    startOffsetFlowFromTocItems(items);
+    toastProps = {show: true, message: $t('toast.toc_imported'), type: 'success'};
   };
 
   const debouncedJumpToPage = debounce((page: number) => {
@@ -1540,6 +2016,11 @@
       }}
       on:jumpToQaPage={(e) => jumpToContentPage(e.detail.page)}
       on:generateAi={generateTocFromAI}
+      on:copyTocImages={handleCopyTocImages}
+      on:copyTocImagesOneByOne={handleCopyTocImagesOneByOne}
+      on:exportTocImagesToTmpPage={handleExportTocImagesToTmpPage}
+      on:copyVisionPrompt={handleCopyVisionPrompt}
+      on:pasteTocJson={handlePasteTocJson}
       on:askPdf={handlePdfQaAsk}
       on:clearQaHistory={handleClearQaHistory}
       on:hoveritem={handleTocItemHover}
@@ -1597,6 +2078,24 @@
     totalPages={pdfState.totalPages}
     on:confirm={handleOffsetConfirm}
     on:skip={handleOffsetSkip}
+  />
+
+  <PasteTocModal
+    bind:show={showPasteTocModal}
+    on:import={handlePasteTocModalImport}
+    on:close={() => (showPasteTocModal = false)}
+  />
+
+  <TocDiffModal
+    bind:show={showTocDiffModal}
+    {diffRows}
+    on:overwrite={handleDiffOverwrite}
+    on:reimport={handleDiffReimport}
+    on:close={() => {
+      showTocDiffModal = false;
+      oldTocSnapshot = [];
+      diffRows = [];
+    }}
   />
 
   <HelpModal bind:showHelpModal />

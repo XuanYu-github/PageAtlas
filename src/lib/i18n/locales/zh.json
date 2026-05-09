@@ -162,7 +162,12 @@
     "skip_this_item": "跳过此项",
     "save": "保存",
     "saved": "已保存",
-    "close_hint": "关闭提示"
+    "close_hint": "关闭提示",
+    "copy_toc_images": "复制目录图片",
+    "copy_toc_images_one_by_one": "逐张复制",
+    "export_tmp_page": "导出到 tmppage",
+    "copy_vision_prompt": "复制视觉提示词",
+    "paste_toc_json": "粘贴 AI 回答"
   },
   "viewer": {
     "no_file": "未命名 PDF",
@@ -224,7 +229,12 @@
     "reset": "重置缩放",
     "upload_new": "上传新的 PDF 文件",
     "switch_edit": "切换到编辑模式（显示原始 PDF）",
-    "switch_preview": "切换到预览模式（显示生成的 PDF）"
+    "switch_preview": "切换到预览模式（显示生成的 PDF）",
+    "copy_toc_images": "复制所选目录页面到剪切板（批量）",
+    "copy_toc_images_one_by_one": "逐张复制目录页面（适用于不支持批量粘贴图片的 AI）",
+    "export_tmp_page": "导出所选目录页面至 'tmppage' 子文件夹",
+    "copy_vision_prompt": "复制可直接粘贴到 Web AI 的组合提示词",
+    "paste_toc_json": "粘贴 Web AI 返回的 JSON 以生成目录"
   },
   "dropzone": {
     "drop_here": "将 PDF 文件拖放到此处...",
@@ -390,6 +400,35 @@
     "no_valid_toc": "未能在所选页面中找到有效的目录",
     "error_generating_toc": "AI 生成目录出错：{msg}",
     "unknown_async_error": "未知异步错误",
-    "unknown_error": "未知错误"
+    "unknown_error": "未知错误",
+    "copied_pages": "已复制第 {current}/{total} 页到剪切板。再次点击复制下一页。",
+    "copied_all_pages": "已复制全部 {total} 页到剪切板。",
+    "copied_prompt": "视觉提示词已复制到剪切板！",
+    "clipboard_copy_failed": "无法复制图片到剪切板。请尝试其他浏览器。",
+    "toc_imported": "已从剪切板导入目录！",
+    "toc_import_failed": "无法解析剪切板中的 ToC JSON。",
+    "toc_import_no_items": "粘贴的 JSON 中没有有效的目录项。",
+    "clipboard_read_failed": "无法读取剪切板。请手动粘贴。",
+    "tmp_page_exported": "已导出 {n} 页到 tmppage 文件夹。",
+    "tmp_page_export_failed": "导出页面失败：{msg}",
+    "tmp_page_cleanup_failed": "清理 tmppage 文件夹失败：{msg}",
+    "tmp_page_no_dir": "尚未选择 tmppage 目录。请先导出页面。"
+  },
+  "manual_toc": {
+    "title": "粘贴 AI 回答",
+    "instruction": "将 Web AI 返回的 JSON 数组粘贴到下方：",
+    "placeholder": "在此粘贴 JSON 数组...",
+    "parse": "导入",
+    "cancel": "取消"
+  },
+  "toc_diff": {
+    "title": "对比目录 — 旧 vs 新",
+    "old_label": "当前目录",
+    "new_label": "新目录",
+    "removed": "已删除",
+    "added": "已添加",
+    "modified": "已修改",
+    "reimport": "重新导入目录",
+    "overwrite": "覆盖当前目录"
   }
 }

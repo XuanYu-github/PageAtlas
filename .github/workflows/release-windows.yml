@@ -67,6 +67,11 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout (for release notes)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -95,6 +100,7 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: PageAtlas ${{ env.RELEASE_TAG }}
           files: dist/**
+          body_path: .github/release-notes.md
           generate_release_notes: true
           draft: false
           prerelease: false

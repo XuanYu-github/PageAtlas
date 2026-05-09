@@ -161,7 +161,12 @@
     "skip_this_item": "Skip This Item",
     "save": "Save",
     "saved": "Saved",
-    "close_hint": "Close"
+    "close_hint": "Close",
+    "copy_toc_images": "Copy ToC Images",
+    "copy_toc_images_one_by_one": "Copy One by One",
+    "export_tmp_page": "Export to tmppage",
+    "copy_vision_prompt": "Copy Vision Prompt",
+    "paste_toc_json": "Paste AI Answer"
   },
   "viewer": {
     "no_file": "Untitled PDF",
@@ -223,7 +228,12 @@
     "reset": "Reset zoom",
     "upload_new": "Upload a new PDF file",
     "switch_edit": "Switch to Edit Mode (Show Original PDF)",
-    "switch_preview": "Switch to Preview Mode (Show Generated PDF)"
+    "switch_preview": "Switch to Preview Mode (Show Generated PDF)",
+    "copy_toc_images": "Copy selected ToC pages as clipboard images (batch)",
+    "copy_toc_images_one_by_one": "Copy ToC pages one at a time for AIs that don't support multi-image paste",
+    "export_tmp_page": "Export selected ToC pages as images to a 'tmppage' subfolder",
+    "copy_vision_prompt": "Copy a combined vision prompt ready to paste into web AI",
+    "paste_toc_json": "Paste web AI JSON response to generate bookmarks"
   },
   "dropzone": {
     "drop_here": "Drop your PDF file here...",
@@ -389,6 +399,35 @@
     "no_valid_toc": "We could not find a valid ToC on these pages.",
     "error_generating_toc": "Error generating ToC from AI: {msg}",
     "unknown_async_error": "Unknown Async Error",
-    "unknown_error": "Unknown Error"
+    "unknown_error": "Unknown Error",
+    "copied_pages": "Copied page {current}/{total} to clipboard. Click again to copy next page.",
+    "copied_all_pages": "Copied all {total} pages to clipboard.",
+    "copied_prompt": "Vision prompt copied to clipboard!",
+    "clipboard_copy_failed": "Could not copy images to clipboard. Try using a different browser.",
+    "toc_imported": "ToC imported from clipboard!",
+    "toc_import_failed": "Failed to parse ToC JSON from clipboard.",
+    "toc_import_no_items": "No valid ToC items found in the pasted JSON.",
+    "clipboard_read_failed": "Could not read clipboard. Please paste manually.",
+    "tmp_page_exported": "Exported {n} pages to tmppage folder.",
+    "tmp_page_export_failed": "Failed to export pages: {msg}",
+    "tmp_page_cleanup_failed": "Failed to clean up tmppage folder: {msg}",
+    "tmp_page_no_dir": "No tmppage directory selected yet. Export pages first."
+  },
+  "manual_toc": {
+    "title": "Paste AI Answer",
+    "instruction": "Paste the JSON array returned by the web AI below:",
+    "placeholder": "Paste JSON array here...",
+    "parse": "Import",
+    "cancel": "Cancel"
+  },
+  "toc_diff": {
+    "title": "Compare ToC — Old vs New",
+    "old_label": "Current ToC",
+    "new_label": "New ToC",
+    "removed": "Removed",
+    "added": "Added",
+    "modified": "Modified",
+    "reimport": "Re-import ToC",
+    "overwrite": "Overwrite Current ToC"
   }
 }

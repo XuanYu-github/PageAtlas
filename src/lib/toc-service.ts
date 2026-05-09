@@ -54,7 +54,7 @@ export async function generateToc(
 
   const imagesBase64: string[] = [];
   let currentTotalSize = 0;
-  const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024;
+  const MAX_PAYLOAD_SIZE = 10 * 1024 * 1024;
   let totalPageCount = 0;
 
   for (const range of finalRanges) {
@@ -64,8 +64,8 @@ export async function generateToc(
 
     for (let pageNum = range.start;pageNum <= range.end;pageNum++) {
       totalPageCount++;
-      if (totalPageCount > 10) {
-        throw new Error(t('error.too_many_pages', { max: 10 }));
+      if (totalPageCount > 20) {
+        throw new Error(t('error.too_many_pages', { max: 20 }));
       }
 
       const image = await service.getPageAsImage(pdfInstance, pageNum);

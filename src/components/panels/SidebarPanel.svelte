@@ -185,6 +185,61 @@
         >
       {/if}
     </PixelButton>
+
+    <div class="flex gap-2">
+      <PixelButton
+        variant="night"
+        size="sm"
+        class="flex-1"
+        on:click={() => dispatch('copyTocImages')}
+        title={$t('tooltip.copy_toc_images')}
+        disabled={!originalPdfInstance}
+      >
+        <span class="text-xs">{$t('btn.copy_toc_images')}</span>
+      </PixelButton>
+      <PixelButton
+        variant="night"
+        size="sm"
+        class="flex-1"
+        on:click={() => dispatch('copyTocImagesOneByOne')}
+        title={$t('tooltip.copy_toc_images_one_by_one')}
+        disabled={!originalPdfInstance}
+      >
+        <span class="text-xs">{$t('btn.copy_toc_images_one_by_one')}</span>
+      </PixelButton>
+    </div>
+    <div class="flex gap-2 mt-1">
+      <PixelButton
+        variant="night"
+        size="sm"
+        class="flex-1"
+        on:click={() => dispatch('copyVisionPrompt')}
+        title={$t('tooltip.copy_vision_prompt')}
+      >
+        <span class="text-xs">{$t('btn.copy_vision_prompt')}</span>
+      </PixelButton>
+      <PixelButton
+        variant="night"
+        size="sm"
+        class="flex-1"
+        on:click={() => dispatch('pasteTocJson')}
+        title={$t('tooltip.paste_toc_json')}
+      >
+        <span class="text-xs">{$t('btn.paste_toc_json')}</span>
+      </PixelButton>
+    </div>
+    <div class="flex gap-2 mt-1">
+      <PixelButton
+        variant="night"
+        size="sm"
+        class="flex-1"
+        on:click={() => dispatch('exportTocImagesToTmpPage')}
+        title={$t('tooltip.export_tmp_page')}
+        disabled={!originalPdfInstance}
+      >
+        <span class="text-xs">{$t('btn.export_tmp_page')}</span>
+      </PixelButton>
+    </div>
   {/if}
 
   {#if activeMode === 'toc' && aiError}
