@@ -43,11 +43,29 @@ jobs:
       - name: Build desktop app
         run: pnpm tauri:build
 
+      - name: Resolve release tag (for filenames)
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.tag }}"
+          } else {
+            $tag = "${{ github.ref_name }}"
+          }
+
+          if (-not $tag) {
+            throw "Release tag is required."
+          }
+
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+
       - name: Prepare portable executable name
         shell: pwsh
         run: |
           if (Test-Path "src-tauri/target/release/pageatlas.exe") {
-            Copy-Item "src-tauri/target/release/pageatlas.exe" "src-tauri/target/release/PageAtlas_0.1.0_x64-portable.exe" -Force
+            $tagNoV = "$env:RELEASE_TAG" -replace '^v',''
+            $portableName = "PageAtlas_${tagNoV}_x64-portable.exe"
+            Copy-Item "src-tauri/target/release/pageatlas.exe" "src-tauri/target/release/$portableName" -Force
+            "PORTABLE_EXE_NAME=$portableName" >> $env:GITHUB_ENV
           }
 
       - name: Upload bundle artifact
@@ -56,7 +74,7 @@ jobs:
           name: pageatlas-windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/PageAtlas_0.1.0_x64-portable.exe
+            src-tauri/target/release/${{ env.PORTABLE_EXE_NAME }}
           if-no-files-found: error
 
   release:
